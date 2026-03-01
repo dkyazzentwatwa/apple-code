@@ -1,0 +1,5 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     '/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple-code'
+relocations:     []
+...

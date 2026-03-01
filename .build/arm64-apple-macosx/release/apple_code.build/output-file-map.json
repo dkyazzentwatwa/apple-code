@@ -1,0 +1,85 @@
+{
+  "": {
+    "dependencies": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/apple_code.d",
+    "object": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/apple_code.o",
+    "swift-dependencies": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/master.swiftdeps"
+  },
+  "/Users/cypher/Public/code/apple-code/Sources/AppleCode/AppleScriptRunner.swift": {
+    "object": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/AppleScriptRunner.swift.o",
+    "swiftmodule": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/AppleScriptRunner~partial.swiftmodule",
+    "swift-dependencies": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/AppleScriptRunner.swiftdeps",
+    "diagnostics": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/AppleScriptRunner.dia"
+  },
+  "/Users/cypher/Public/code/apple-code/Sources/AppleCode/Tools/CalendarTool.swift": {
+    "object": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/CalendarTool.swift.o",
+    "swiftmodule": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/CalendarTool~partial.swiftmodule",
+    "swift-dependencies": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/CalendarTool.swiftdeps",
+    "diagnostics": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/CalendarTool.dia"
+  },
+  "/Users/cypher/Public/code/apple-code/Sources/AppleCode/Tools/ListDirectoryTool.swift": {
+    "object": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/ListDirectoryTool.swift.o",
+    "swiftmodule": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/ListDirectoryTool~partial.swiftmodule",
+    "swift-dependencies": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/ListDirectoryTool.swiftdeps",
+    "diagnostics": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/ListDirectoryTool.dia"
+  },
+  "/Users/cypher/Public/code/apple-code/Sources/AppleCode/Tools/MailTool.swift": {
+    "object": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/MailTool.swift.o",
+    "swiftmodule": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/MailTool~partial.swiftmodule",
+    "swift-dependencies": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/MailTool.swiftdeps",
+    "diagnostics": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/MailTool.dia"
+  },
+  "/Users/cypher/Public/code/apple-code/Sources/AppleCode/Tools/MessagesTool.swift": {
+    "object": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/MessagesTool.swift.o",
+    "swiftmodule": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/MessagesTool~partial.swiftmodule",
+    "swift-dependencies": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/MessagesTool.swiftdeps",
+    "diagnostics": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/MessagesTool.dia"
+  },
+  "/Users/cypher/Public/code/apple-code/Sources/AppleCode/Tools/NotesTool.swift": {
+    "object": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/NotesTool.swift.o",
+    "swiftmodule": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/NotesTool~partial.swiftmodule",
+    "swift-dependencies": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/NotesTool.swiftdeps",
+    "diagnostics": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/NotesTool.dia"
+  },
+  "/Users/cypher/Public/code/apple-code/Sources/AppleCode/Tools/ReadFileTool.swift": {
+    "object": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/ReadFileTool.swift.o",
+    "swiftmodule": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/ReadFileTool~partial.swiftmodule",
+    "swift-dependencies": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/ReadFileTool.swiftdeps",
+    "diagnostics": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/ReadFileTool.dia"
+  },
+  "/Users/cypher/Public/code/apple-code/Sources/AppleCode/Tools/RemindersTool.swift": {
+    "object": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/RemindersTool.swift.o",
+    "swiftmodule": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/RemindersTool~partial.swiftmodule",
+    "swift-dependencies": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/RemindersTool.swiftdeps",
+    "diagnostics": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/RemindersTool.dia"
+  },
+  "/Users/cypher/Public/code/apple-code/Sources/AppleCode/Tools/RunCommandTool.swift": {
+    "object": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/RunCommandTool.swift.o",
+    "swiftmodule": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/RunCommandTool~partial.swiftmodule",
+    "swift-dependencies": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/RunCommandTool.swiftdeps",
+    "diagnostics": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/RunCommandTool.dia"
+  },
+  "/Users/cypher/Public/code/apple-code/Sources/AppleCode/Tools/SearchContentTool.swift": {
+    "object": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/SearchContentTool.swift.o",
+    "swiftmodule": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/SearchContentTool~partial.swiftmodule",
+    "swift-dependencies": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/SearchContentTool.swiftdeps",
+    "diagnostics": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/SearchContentTool.dia"
+  },
+  "/Users/cypher/Public/code/apple-code/Sources/AppleCode/Tools/SearchFilesTool.swift": {
+    "object": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/SearchFilesTool.swift.o",
+    "swiftmodule": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/SearchFilesTool~partial.swiftmodule",
+    "swift-dependencies": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/SearchFilesTool.swiftdeps",
+    "diagnostics": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/SearchFilesTool.dia"
+  },
+  "/Users/cypher/Public/code/apple-code/Sources/AppleCode/Tools/WriteFileTool.swift": {
+    "object": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/WriteFileTool.swift.o",
+    "swiftmodule": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/WriteFileTool~partial.swiftmodule",
+    "swift-dependencies": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/WriteFileTool.swiftdeps",
+    "diagnostics": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/WriteFileTool.dia"
+  },
+  "/Users/cypher/Public/code/apple-code/Sources/AppleCode/main.swift": {
+    "object": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/main.swift.o",
+    "swiftmodule": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/main~partial.swiftmodule",
+    "swift-dependencies": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/main.swiftdeps",
+    "diagnostics": "/Users/cypher/Public/code/apple-code/.build/arm64-apple-macosx/release/apple_code.build/main.dia"
+  }
+}
