@@ -86,9 +86,17 @@ struct CalendarTool: Tool {
         let calClause: String
         if let cal = calendar {
             let escCal = AppleScriptRunner.escape(cal)
-            calClause = "set targetCal to calendar \"\(escCal)\""
+            calClause = """
+            set namedCals to (every calendar whose name is "\(escCal)")
+            if (count of namedCals) is 0 then error "calendar not found"
+            set targetCal to item 1 of namedCals
+            """
         } else {
-            calClause = "set targetCal to default calendar"
+            calClause = """
+            set writableCals to (every calendar whose writable is true)
+            if (count of writableCals) is 0 then error "no writable calendar"
+            set targetCal to item 1 of writableCals
+            """
         }
 
         let notesClause: String
@@ -119,7 +127,7 @@ struct CalendarTool: Tool {
             try
                 set startDate to \(startAS)
                 \(endDateSetup)
-                set newEvent to make new event at targetCal with properties {summary:"\(escTitle)", start date:startDate, end date:endDateVal}
+                set newEvent to make new event at end of events of targetCal with properties {summary:"\(escTitle)", start date:startDate, end date:endDateVal}
                 \(notesClause)
                 return uid of newEvent as text
             on error errMsg
@@ -128,11 +136,17 @@ struct CalendarTool: Tool {
         end tell
         """
 
-        let result = AppleScriptRunner.run(script, timeout: 30)
-        if let r = result, !r.hasPrefix("error:") {
-            return "Created event '\(title)' (uid: \(r))"
+        let result = AppleScriptRunner.runDetailed(script, timeout: 30)
+        if result.succeeded {
+            let output = result.stdout
+            if !output.hasPrefix("error:") {
+                return "Created event '\(title)' (uid: \(output))"
+            }
+            return "Error creating event: \(output)"
         }
-        return "Error creating event: \(result ?? "unknown")"
+
+        let details = AppleScriptRunner.classifyFailure(result, appName: "Calendar")
+        return "Error creating event: \(details)"
     }
 
     // MARK: - Helpers

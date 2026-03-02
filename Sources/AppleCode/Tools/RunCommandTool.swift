@@ -45,11 +45,31 @@ struct RunCommandTool: Tool {
             return "Error launching command: \(error.localizedDescription)"
         }
 
-        let timer = DispatchWorkItem { process.terminate() }
+        final class TimeoutState: @unchecked Sendable {
+            var didTimeout = false
+            let lock = NSLock()
+            func markTimeout() {
+                lock.lock()
+                defer { lock.unlock() }
+                didTimeout = true
+            }
+            func value() -> Bool {
+                lock.lock()
+                defer { lock.unlock() }
+                return didTimeout
+            }
+        }
+
+        let state = TimeoutState()
+        let timer = DispatchWorkItem {
+            state.markTimeout()
+            if process.isRunning {
+                process.terminate()
+            }
+        }
         DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(timeoutSecs), execute: timer)
 
         process.waitUntilExit()
-        let didTimeout = timer.isCancelled == false
         timer.cancel()
 
         let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
@@ -62,11 +82,13 @@ struct RunCommandTool: Tool {
             output += "\n[stderr]\n\(errOutput)"
         }
 
+        let didTimeout = state.value()
+
         if process.terminationStatus != 0 && !didTimeout {
             output += "\n[exit code: \(process.terminationStatus)]"
         }
 
-        if didTimeout && !process.isRunning == false {
+        if didTimeout {
             output += "\n[timed out after \(timeoutSecs)s]"
         }
 

@@ -59,9 +59,11 @@ struct NotesTool: Tool {
             return folderNames as text
         end tell
         """
-        guard let raw = AppleScriptRunner.run(script) else {
-            return "Error: Could not list Notes folders"
+        let result = AppleScriptRunner.runDetailed(script, timeout: 20)
+        guard result.succeeded else {
+            return "Error: \(AppleScriptRunner.classifyFailure(result, appName: "Notes"))"
         }
+        let raw = result.stdout
         if raw.isEmpty { return "No folders found." }
         let folders = raw.components(separatedBy: "|||").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         return folders.joined(separator: "\n")
@@ -75,22 +77,17 @@ struct NotesTool: Tool {
     }
 
     private func search(query: String, folder: String?, limit: Int = 20) -> String {
-        let allNotes = fetchRaw(folder: folder, limit: 200)
-        let q = query.lowercased()
-        let matches = allNotes.filter { n in
-            (n["name"] ?? "").lowercased().contains(q) ||
-            (n["preview"] ?? "").lowercased().contains(q)
-        }.prefix(limit)
-        return AppleScriptRunner.formatRecords(Array(matches)) { r in
+        let records = searchByNameRaw(query: query, folder: folder, limit: limit)
+        return AppleScriptRunner.formatRecords(records) { r in
             "\(r["name"] ?? "")  [\(r["modification_date"] ?? "")]"
         }
     }
 
     private func getContent(nameOrId: String, folder: String?) -> String {
-        let esc = nameOrId.replacingOccurrences(of: "\"", with: "\\\"")
+        let esc = AppleScriptRunner.escape(nameOrId)
         let findBlock: String
         if let folder = folder {
-            let escFolder = folder.replacingOccurrences(of: "\"", with: "\\\"")
+            let escFolder = AppleScriptRunner.escape(folder)
             findBlock = """
                 try
                     set targetContainer to folder "\(escFolder)"
@@ -98,22 +95,24 @@ struct NotesTool: Tool {
                     return ""
                 end try
                 set matchedNote to missing value
-                repeat with n in (every note of targetContainer)
-                    if (name of n as text) is "\(esc)" or (id of n as text) is "\(esc)" then
-                        set matchedNote to n
-                        exit repeat
-                    end if
-                end repeat
+                set byName to (every note of targetContainer whose name is "\(esc)")
+                if (count of byName) > 0 then
+                    set matchedNote to item 1 of byName
+                else
+                    set byId to (every note of targetContainer whose id is "\(esc)")
+                    if (count of byId) > 0 then set matchedNote to item 1 of byId
+                end if
             """
         } else {
             findBlock = """
                 set matchedNote to missing value
-                repeat with n in (every note)
-                    if (name of n as text) is "\(esc)" or (id of n as text) is "\(esc)" then
-                        set matchedNote to n
-                        exit repeat
-                    end if
-                end repeat
+                set byName to (every note whose name is "\(esc)")
+                if (count of byName) > 0 then
+                    set matchedNote to item 1 of byName
+                else
+                    set byId to (every note whose id is "\(esc)")
+                    if (count of byId) > 0 then set matchedNote to item 1 of byId
+                end if
             """
         }
         let script = """
@@ -127,7 +126,11 @@ struct NotesTool: Tool {
             end try
         end tell
         """
-        return AppleScriptRunner.run(script, timeout: 30) ?? "Note not found."
+        let result = AppleScriptRunner.runDetailed(script, timeout: 30)
+        guard result.succeeded else {
+            return "Error reading note: \(AppleScriptRunner.classifyFailure(result, appName: "Notes"))"
+        }
+        return result.stdout.isEmpty ? "Note not found." : result.stdout
     }
 
     private func create(title: String, body: String, folder: String?) -> String {
@@ -159,11 +162,15 @@ struct NotesTool: Tool {
             end try
         end tell
         """
-        let result = AppleScriptRunner.run(script, timeout: 30)
-        if let r = result, !r.hasPrefix("error:") {
-            return "Created note '\(title)' (id: \(r))"
+        let result = AppleScriptRunner.runDetailed(script, timeout: 30)
+        guard result.succeeded else {
+            return "Error creating note: \(AppleScriptRunner.classifyFailure(result, appName: "Notes"))"
         }
-        return "Error creating note: \(result ?? "unknown error")"
+        let output = result.stdout
+        if !output.hasPrefix("error:") {
+            return "Created note '\(title)' (id: \(output))"
+        }
+        return "Error creating note: \(output)"
     }
 
     private func append(nameOrId: String, text: String, folder: String?) -> String {
@@ -180,22 +187,24 @@ struct NotesTool: Tool {
                     return "error: folder not found"
                 end try
                 set matchedNote to missing value
-                repeat with n in (every note of targetContainer)
-                    if (name of n as text) is "\(escName)" or (id of n as text) is "\(escName)" then
-                        set matchedNote to n
-                        exit repeat
-                    end if
-                end repeat
+                set byName to (every note of targetContainer whose name is "\(escName)")
+                if (count of byName) > 0 then
+                    set matchedNote to item 1 of byName
+                else
+                    set byId to (every note of targetContainer whose id is "\(escName)")
+                    if (count of byId) > 0 then set matchedNote to item 1 of byId
+                end if
             """
         } else {
             findBlock = """
                 set matchedNote to missing value
-                repeat with n in (every note)
-                    if (name of n as text) is "\(escName)" or (id of n as text) is "\(escName)" then
-                        set matchedNote to n
-                        exit repeat
-                    end if
-                end repeat
+                set byName to (every note whose name is "\(escName)")
+                if (count of byName) > 0 then
+                    set matchedNote to item 1 of byName
+                else
+                    set byId to (every note whose id is "\(escName)")
+                    if (count of byId) > 0 then set matchedNote to item 1 of byId
+                end if
             """
         }
 
@@ -204,19 +213,98 @@ struct NotesTool: Tool {
             \(findBlock)
             if matchedNote is missing value then return "error: note not found"
             try
-                set existingBody to plaintext of matchedNote
-                set body of matchedNote to existingBody & "\\n\\n" & "\(escText)"
+                set existingBody to body of matchedNote as text
+                set body of matchedNote to existingBody & "<br><br>" & "\(escText)"
                 return "ok"
             on error errMsg
                 return "error: " & errMsg
             end try
         end tell
         """
-        let result = AppleScriptRunner.run(script, timeout: 30)
-        return result == "ok" ? "Successfully appended to note." : "Error: \(result ?? "unknown")"
+        let result = AppleScriptRunner.runDetailed(script, timeout: 30)
+        guard result.succeeded else {
+            return "Error: \(AppleScriptRunner.classifyFailure(result, appName: "Notes"))"
+        }
+        return result.stdout == "ok" ? "Successfully appended to note." : "Error: \(result.stdout)"
     }
 
     // MARK: - Internal fetch
+
+    private func searchByNameRaw(query: String, folder: String?, limit: Int) -> [[String: String]] {
+        let escQuery = AppleScriptRunner.escape(query)
+        let sourceBlock: String
+        if let folder = folder {
+            let escFolder = folder.replacingOccurrences(of: "\"", with: "\\\"")
+            sourceBlock = """
+                try
+                    set targetFolder to folder "\(escFolder)"
+                on error
+                    return ""
+                end try
+                ignoring case
+                    set matched to (every note of targetFolder whose name contains "\(escQuery)")
+                end ignoring
+            """
+        } else {
+            sourceBlock = """
+                ignoring case
+                    set matched to (every note whose name contains "\(escQuery)")
+                end ignoring
+            """
+        }
+
+        let script = """
+        on sanitise(txt)
+            set AppleScript's text item delimiters to (ASCII character 9)
+            set parts to text items of txt
+            set AppleScript's text item delimiters to " "
+            set txt to parts as text
+            set AppleScript's text item delimiters to (ASCII character 10)
+            set parts to text items of txt
+            set AppleScript's text item delimiters to " "
+            set txt to parts as text
+            set AppleScript's text item delimiters to (ASCII character 13)
+            set parts to text items of txt
+            set AppleScript's text item delimiters to " "
+            set txt to parts as text
+            set AppleScript's text item delimiters to ""
+            return txt
+        end sanitise
+
+        tell application "Notes"
+            set outputLines to {}
+            \(sourceBlock)
+            repeat with n in matched
+                if (count of outputLines) >= \(limit) then exit repeat
+                set nId to my sanitise(id of n as text)
+                set nName to my sanitise(name of n as text)
+                try
+                    set nBody to plaintext of n as text
+                    if length of nBody > 240 then set nBody to text 1 thru 240 of nBody
+                    set nBody to my sanitise(nBody)
+                on error
+                    set nBody to ""
+                end try
+                try
+                    set nModDate to my sanitise(modification date of n as text)
+                on error
+                    set nModDate to ""
+                end try
+                set end of outputLines to nId & (ASCII character 9) & nName & (ASCII character 9) & nBody & (ASCII character 9) & nModDate
+            end repeat
+
+            set AppleScript's text item delimiters to (ASCII character 10)
+            return (outputLines as text)
+        end tell
+        """
+
+        let result = AppleScriptRunner.runDetailed(script, timeout: 45)
+        guard result.succeeded else { return [] }
+        return AppleScriptRunner.parseDelimited(
+            result.stdout,
+            fieldNames: ["id", "name", "preview", "modification_date"]
+        )
+    }
 
     private func fetchRaw(folder: String?, limit: Int) -> [[String: String]] {
         let fetchBlock: String
