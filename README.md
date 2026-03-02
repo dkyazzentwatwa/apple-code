@@ -27,6 +27,44 @@ Recent updates added a full web retrieval stack and stronger failure recovery:
 - Xcode 26+ command line tools
 - Swift toolchain with Foundation Models support
 
+## Install (Recommended)
+
+From the repo root:
+
+```bash
+./scripts/install.sh
+```
+
+This builds a release binary and installs it to `~/.local/bin/apple-code` by default.
+
+Quick start after install:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+apple-code
+```
+
+To persist `PATH` across shell restarts:
+
+```bash
+# zsh
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+
+# bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+```
+
+Then open a new shell (or `source ~/.zshrc` / `source ~/.bashrc`).
+
+Installer options:
+
+```bash
+./scripts/install.sh --help
+./scripts/install.sh --target ~/bin
+./scripts/install.sh --yes --no-path-edit
+./scripts/install.sh --force
+```
+
 ## Build
 
 ```bash
@@ -35,6 +73,14 @@ swift build -c release
 ```
 
 ## Run
+
+### Installed binary (recommended)
+
+```bash
+apple-code
+apple-code "summarize this repo"
+apple-code --cwd ~/projects/myapp
+```
 
 ### One-off prompt
 
@@ -207,15 +253,16 @@ Install and verify separately in your shell, then use normal prompts that imply 
 
 - `/new` resets conversation history, but does not reload code.
 - To load code changes, exit REPL and restart process.
-- Running `apple-code` may use an older global binary (for example `/usr/local/bin/apple-code`).
+- Running `apple-code` may use an older global binary if multiple installs exist in `PATH`.
 - Running `swift run apple-code ...` from this repo always uses latest local source.
-
-Update global install:
+- Upgrade an installed user-local binary by rerunning:
 
 ```bash
-swift build -c release
-sudo cp ./.build/release/apple-code /usr/local/bin/apple-code
+./scripts/install.sh
 ```
+
+Troubleshooting: unsigned/dev builds may be blocked when copied to `/usr/local/bin` by macOS security policy.
+Prefer `~/.local/bin` (installer default) for local source builds.
 
 ## Safety and Limits
 

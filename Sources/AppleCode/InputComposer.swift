@@ -8,16 +8,27 @@ final class InputComposer {
         case scrollDown
     }
 
+    private enum HistoryRecall {
+        case unchanged
+        case value(String)
+        case clear
+    }
+
     private var originalTermios = termios()
     private var rawEnabled = false
+    private let historyLock = NSLock()
     private var history: [String] = []
     private var historyIndex: Int?
 
     func addHistory(_ line: String) {
         guard !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        history.append(line)
-        if history.count > 200 { history.removeFirst(history.count - 200) }
-        historyIndex = nil
+        withHistoryLock {
+            history.append(line)
+            if history.count > 200 {
+                history.removeFirst(history.count - 200)
+            }
+            historyIndex = nil
+        }
     }
 
     func readSubmission(renderer: TUIRenderer, cwd: String) -> String? {
@@ -194,28 +205,52 @@ final class InputComposer {
     }
 
     private func historyUp(chars: inout [Character], cursor: inout Int) {
-        if !history.isEmpty {
-            if historyIndex == nil { historyIndex = history.count - 1 }
-            else if let idx = historyIndex, idx > 0 { historyIndex = idx - 1 }
-            if let idx = historyIndex {
-                chars = Array(history[idx])
-                cursor = chars.count
+        let recalled = withHistoryLock { () -> HistoryRecall in
+            guard !history.isEmpty else { return .unchanged }
+            if historyIndex == nil {
+                historyIndex = history.count - 1
+            } else if let idx = historyIndex, idx > 0 {
+                historyIndex = idx - 1
             }
+            guard let idx = historyIndex, history.indices.contains(idx) else { return .unchanged }
+            return .value(history[idx])
+        }
+
+        if case .value(let value) = recalled {
+            chars = Array(value)
+            cursor = chars.count
         }
     }
 
     private func historyDown(chars: inout [Character], cursor: inout Int) {
-        if let idx = historyIndex {
+        let recalled = withHistoryLock { () -> HistoryRecall in
+            guard let idx = historyIndex else { return .unchanged }
             if idx < history.count - 1 {
-                historyIndex = idx + 1
-                chars = Array(history[historyIndex!])
-                cursor = chars.count
-            } else {
-                historyIndex = nil
-                chars = []
-                cursor = 0
+                let next = idx + 1
+                historyIndex = next
+                guard history.indices.contains(next) else { return .unchanged }
+                return .value(history[next])
             }
+            historyIndex = nil
+            return .clear
         }
+
+        switch recalled {
+        case .value(let value):
+            chars = Array(value)
+            cursor = chars.count
+        case .clear:
+            chars = []
+            cursor = 0
+        case .unchanged:
+            break
+        }
+    }
+
+    private func withHistoryLock<T>(_ body: () -> T) -> T {
+        historyLock.lock()
+        defer { historyLock.unlock() }
+        return body()
     }
 
     private func deleteWordBackward(chars: inout [Character], cursor: inout Int) {
