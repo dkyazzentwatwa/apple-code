@@ -6,6 +6,7 @@ final class InputComposer {
         case none
         case scrollUp
         case scrollDown
+        case previousSession
     }
 
     private enum HistoryRecall {
@@ -82,7 +83,9 @@ final class InputComposer {
     func readSubmissionInline(
         prompt: String = "",
         promptProvider: (() -> String)? = nil,
-        onScroll: ((Int) -> Void)? = nil
+        onScroll: ((Int) -> Void)? = nil,
+        onCommandShortcut: ((String) -> Void)? = nil,
+        onSessionNav: ((Int) -> Void)? = nil
     ) -> String? {
         guard enableRawMode() else { return readLine(strippingNewline: true) }
         defer { disableRawMode() }
@@ -123,6 +126,10 @@ final class InputComposer {
                 onScroll?(10)
             case 22: // Ctrl+V scroll down (Mac-friendly fallback for PageDown)
                 onScroll?(-10)
+            case 16: // Ctrl+P command palette
+                onCommandShortcut?("/settings")
+            case 29: // Ctrl+] quick switch to next session chip
+                onSessionNav?(1)
             case 27: // Escape sequence
                 switch handleEscape(chars: &chars, cursor: &cursor) {
                 case .none:
@@ -131,6 +138,8 @@ final class InputComposer {
                     onScroll?(10)
                 case .scrollDown:
                     onScroll?(-10)
+                case .previousSession:
+                    onSessionNav?(-1)
                 }
             default:
                 if byte >= 32 {
@@ -142,7 +151,7 @@ final class InputComposer {
     }
 
     private func handleEscape(chars: inout [Character], cursor: inout Int) -> EscapeAction {
-        guard let b1 = readByte() else { return .none }
+        guard let b1 = readByte(timeoutMs: 25) else { return .previousSession }
 
         // VT-style arrows/home/end: ESC O A/B/C/D/H/F
         if b1 == 79 {
@@ -299,6 +308,67 @@ final class InputComposer {
         let target = max(0, promptWidth + min(cursor, chars.count))
         print("\r\u{001B}[\(target)C", terminator: "")
         fflush(stdout)
+    }
+
+    func readMenuSelection(title: String, options: [String]) -> Int? {
+        guard !options.isEmpty else { return nil }
+        guard enableRawMode() else {
+            print("\n\(title)")
+            for (index, option) in options.enumerated() {
+                print("  \(index + 1). \(option)")
+            }
+            print("\(TUI.promptColor)Selection>\(TUI.reset) ", terminator: "")
+            fflush(stdout)
+            guard let raw = readLine(strippingNewline: true),
+                  let parsed = Int(raw.trimmingCharacters(in: .whitespacesAndNewlines)),
+                  parsed > 0, parsed <= options.count else {
+                return nil
+            }
+            return parsed - 1
+        }
+        defer { disableRawMode() }
+
+        var selected = 0
+        while true {
+            print("\u{001B}[2J\u{001B}[H", terminator: "")
+            writeRawMenuLine("\(TUI.bold)\(title)\(TUI.reset)")
+            writeRawMenuLine("")
+            for (index, option) in options.enumerated() {
+                if index == selected {
+                    writeRawMenuLine("\(TUI.Colors.brightCyan)\(TUI.bold)› \(option)\(TUI.reset)")
+                } else {
+                    writeRawMenuLine("  \(option)")
+                }
+            }
+            writeRawMenuLine("")
+            writeRawMenuLine("\(TUI.dim)↑/↓ navigate • Enter select • Esc cancel\(TUI.reset)")
+            fflush(stdout)
+
+            guard let byte = readByte() else { continue }
+            switch byte {
+            case 3:
+                return nil
+            case 10, 13:
+                return selected
+            case 27:
+                guard let b1 = readByte(timeoutMs: 25) else { return nil }
+                guard b1 == 91, let b2 = readByte(timeoutMs: 25) else { return nil }
+                if b2 == 65 {
+                    selected = max(0, selected - 1)
+                } else if b2 == 66 {
+                    selected = min(options.count - 1, selected + 1)
+                } else {
+                    return nil
+                }
+            default:
+                break
+            }
+        }
+    }
+
+    private func writeRawMenuLine(_ line: String) {
+        // In raw mode, '\\n' does not return carriage; emit CRLF explicitly.
+        print("\u{001B}[2K\r\(line)\r\n", terminator: "")
     }
 
     private func visibleWidth(_ text: String) -> Int {

@@ -3,13 +3,17 @@ import FoundationModels
 
 func printUsage() {
     print("""
-    apple-code - Local AI coding assistant powered by Apple Foundation Models
+    apple-code - Local AI coding assistant with Apple Foundation Models and Ollama
 
     Usage: apple-code [options] ["prompt"]
 
     Options:
       --system "..."          Custom system instructions
       --cwd /path/to/dir     Working directory for file/command tools
+      --provider <name>      Model provider: apple | ollama
+      --model <id>           Model ID (ollama)
+      --base-url <url>       Base URL for ollama (default: http://127.0.0.1:11434)
+      --ui <mode>            UI mode: classic | framed
       --timeout N            Max seconds (default: 120)
       --no-apple-tools       Disable Apple app tools (Notes, Mail, etc.)
       --check-apple-tools    Run Apple app diagnostics and exit
@@ -36,9 +40,12 @@ func printUsage() {
       /history [n]          Show recent transcript entries
       /show <id>            Show full transcript entry by ID
       /model, /m            Show model info
+      /settings             Open settings menu (provider/model/ui/theme/session)
+      /ui [mode]            Switch UI mode (classic, framed)
+      /session ...          Quick session switch (next, prev, id)
       /cd <path>            Change directory
       /clear, /c            Clear screen
-      /theme <name>         Switch theme (wow, minimal, classic)
+      /theme <name>         Switch theme (wow, minimal, classic, solar, ocean, forest)
       /help, /h             Show help
       (:commands still supported for compatibility)
 
@@ -46,6 +53,7 @@ func printUsage() {
       # Interactive mode (REPL)
       apple-code
       apple-code --cwd ~/projects/myapp
+      apple-code --provider ollama --model qwen3.5:4b
 
       # One-off mode
       apple-code "List files in current directory"
@@ -172,9 +180,23 @@ func routeTools(
 
 let args = CommandLine.arguments
 
+private func effectiveResponseTimeout(for config: ModelConfig, requestedSeconds: Int) -> Int {
+    let requested = max(5, requestedSeconds)
+    switch config.provider {
+    case .apple:
+        return requested
+    case .ollama:
+        return max(300, requested)
+    }
+}
+
 var promptParts: [String] = []
 var systemInstructions: String?
 var cwd: String?
+var providerFlag: String?
+var modelFlag: String?
+var baseURLFlag: String?
+var uiModeFlag: String?
 var timeout: Int = 120
 var noAppleTools = false
 var checkAppleTools = false
@@ -200,6 +222,18 @@ while i < args.count {
     case "--cwd":
         i += 1
         if i < args.count { cwd = args[i] }
+    case "--provider":
+        i += 1
+        if i < args.count { providerFlag = args[i] }
+    case "--model":
+        i += 1
+        if i < args.count { modelFlag = args[i] }
+    case "--base-url":
+        i += 1
+        if i < args.count { baseURLFlag = args[i] }
+    case "--ui":
+        i += 1
+        if i < args.count { uiModeFlag = args[i] }
     case "--timeout":
         i += 1
         if i < args.count { timeout = Int(args[i]) ?? 120 }
@@ -284,8 +318,15 @@ if checkAppleTools {
     exit(0)
 }
 
-guard SystemLanguageModel.default.availability == .available else {
-    FileHandle.standardError.write(Data("Error: Apple Foundation Models not available. Requires macOS 26+ on Apple Silicon.\n".utf8))
+let runtimeModelConfig: ModelConfig
+do {
+    runtimeModelConfig = try ModelConfig.resolve(
+        providerFlag: providerFlag,
+        modelFlag: modelFlag,
+        baseURLFlag: baseURLFlag
+    )
+} catch {
+    FileHandle.standardError.write(Data("Error: \(error.localizedDescription)\n".utf8))
     exit(1)
 }
 
@@ -298,27 +339,53 @@ if let cwd = cwd {
 }
 
 let shouldBeInteractive = forceInteractive || promptArg == nil || promptArg?.isEmpty == true
+let initialUIMode = UIMode(rawValue: (uiModeFlag ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) ?? .classic
 
 if shouldBeInteractive {
     var session: Session
+    var initialModelConfig = runtimeModelConfig
 
     if let resumeId = resumeSessionId {
         do {
             session = try SessionManager.shared.loadSession(id: resumeId)
             let idStr = String(resumeId.uuidString.prefix(8))
             printSuccess("Resumed session \(idStr)")
+            if let pinned = session.modelConfig {
+                initialModelConfig = pinned
+            } else {
+                initialModelConfig = .appleDefault
+                session.modelConfig = initialModelConfig
+            }
         } catch {
             printError("Could not load session: \(error.localizedDescription)")
             exit(1)
         }
     } else if startNewSession {
-        session = SessionManager.shared.createSession(workingDir: workingDir)
+        session = SessionManager.shared.createSession(
+            workingDir: workingDir,
+            modelConfig: initialModelConfig,
+            uiMode: initialUIMode,
+            activeThemeName: TUITheme.wow.name
+        )
     } else {
-        session = SessionManager.shared.createSession(workingDir: workingDir)
+        session = SessionManager.shared.createSession(
+            workingDir: workingDir,
+            modelConfig: initialModelConfig,
+            uiMode: initialUIMode,
+            activeThemeName: TUITheme.wow.name
+        )
+    }
+
+    do {
+        _ = try makeModelClient(config: initialModelConfig)
+    } catch {
+        printError(error.localizedDescription)
+        exit(1)
     }
 
     await runInteractiveREPL(
         session: &session,
+        initialModelConfig: initialModelConfig,
         systemInstructions: systemInstructions,
         timeout: timeout,
         includeAppleTools: !noAppleTools,
@@ -379,18 +446,28 @@ For shell/terminal requests, use the runCommand tool instead of saying you canno
 """
 let instructions = systemInstructions.map { "\(defaultPreamble)\n\($0)" } ?? defaultPreamble
 
-let llmSession = LanguageModelSession(tools: tools, instructions: instructions)
+let modelClient: any ModelClient
+do {
+    modelClient = try makeModelClient(config: runtimeModelConfig)
+} catch {
+    FileHandle.standardError.write(Data("Error: \(error.localizedDescription)\n".utf8))
+    exit(1)
+}
 
 do {
-    var content = try await withResponseTimeout(seconds: timeout) {
-        let response = try await llmSession.respond(to: prompt)
-        return response.content
+    var content = try await withResponseTimeout(seconds: effectiveResponseTimeout(for: runtimeModelConfig, requestedSeconds: timeout)) {
+        try await modelClient.respond(
+            prompt: prompt,
+            tools: tools,
+            instructions: instructions
+        )
     }
 
     if !noAppleTools,
        let recovered = await resolveAppleRefusalFallback(
            userPrompt: prompt,
-           modelReply: content
+           modelReply: content,
+           modelClient: modelClient
        ) {
         content = recovered
     }
@@ -398,7 +475,9 @@ do {
     if !noAppleTools,
        let recovered = await resolveNotesComposeFallback(
            userPrompt: prompt,
-           modelReply: content
+           modelReply: content,
+           modelClient: modelClient,
+           timeoutSeconds: timeout
        ) {
         content = recovered
     }
@@ -408,7 +487,8 @@ do {
            userPrompt: prompt,
            modelReply: content,
            instructions: instructions,
-           timeoutSeconds: timeout
+           timeoutSeconds: timeout,
+           modelClient: modelClient
        ) {
         content = recovered
     }
@@ -428,7 +508,10 @@ do {
        isAppleIntentPrompt(prompt),
        (err.contains("Failed to deserialize a Generable type")
         || err.contains("The operation couldn’t be completed")) {
-        if let recovered = await resolveAppleIntentDirect(userPrompt: prompt) {
+        if let recovered = await resolveAppleIntentDirect(
+            userPrompt: prompt,
+            modelClient: modelClient
+        ) {
             printAssistantMessage(recovered, verbose: verbose)
             exit(0)
         }

@@ -44,7 +44,34 @@ struct TUITheme {
         border: .init(h: "-", v: "|", tl: "+", tr: "+", bl: "+", br: "+")
     )
 
-    static let all: [TUITheme] = [wow, minimal, classic]
+    static let solar = TUITheme(
+        name: "solar",
+        primary: TUI.Colors.brightYellow,
+        secondary: TUI.Colors.brightRed,
+        accent: TUI.Colors.brightWhite,
+        muted: TUI.Colors.brightBlack,
+        border: .init(h: "─", v: "│", tl: "┌", tr: "┐", bl: "└", br: "┘")
+    )
+
+    static let ocean = TUITheme(
+        name: "ocean",
+        primary: TUI.Colors.brightBlue,
+        secondary: TUI.Colors.cyan,
+        accent: TUI.Colors.brightWhite,
+        muted: TUI.Colors.brightBlack,
+        border: .init(h: "═", v: "║", tl: "╔", tr: "╗", bl: "╚", br: "╝")
+    )
+
+    static let forest = TUITheme(
+        name: "forest",
+        primary: TUI.Colors.brightGreen,
+        secondary: TUI.Colors.yellow,
+        accent: TUI.Colors.brightWhite,
+        muted: TUI.Colors.brightBlack,
+        border: .init(h: "━", v: "┃", tl: "┏", tr: "┓", bl: "┗", br: "┛")
+    )
+
+    static let all: [TUITheme] = [wow, minimal, classic, solar, ocean, forest]
 
     static func named(_ name: String?) -> TUITheme? {
         guard let n = name?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !n.isEmpty else {

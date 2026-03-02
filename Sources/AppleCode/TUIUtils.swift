@@ -205,9 +205,20 @@ func startSpinner(message: String = "Thinking", delayMs: UInt64 = 200) {
 
         Spinner.shared.isVisible = true
         Spinner.shared.spinTask = Task { [message] in
+            let palette = [
+                TUI.Colors.brightCyan,
+                TUI.Colors.brightMagenta,
+                TUI.Colors.brightBlue,
+                TUI.Colors.brightYellow,
+                TUI.Colors.brightGreen,
+            ]
+            let messageChars = Array(message + "...")
             while !Task.isCancelled {
-                let frame = Spinner.shared.frames[Spinner.shared.frameIndex % Spinner.shared.frames.count]
-                print("\r\(TUI.Colors.brightCyan)\(frame)\(TUI.reset) \(TUI.dim)\(message)...\(TUI.reset)", terminator: "")
+                let index = Spinner.shared.frameIndex
+                let frame = Spinner.shared.frames[index % Spinner.shared.frames.count]
+                let color = palette[index % palette.count]
+                let messageGlow = glowingMessageText(chars: messageChars, phase: index)
+                print("\r\(color)\(TUI.bold)\(frame)\(TUI.reset) \(messageGlow)\(TUI.reset)", terminator: "")
                 fflush(stdout)
                 Spinner.shared.frameIndex += 1
                 usleep(80_000)
@@ -231,4 +242,36 @@ func stopSpinner() -> TimeInterval {
     Spinner.shared.startedAt = nil
     Spinner.shared.isVisible = false
     return max(0, elapsed)
+}
+
+private func glowingMessageText(chars: [Character], phase: Int) -> String {
+    guard !chars.isEmpty else { return "" }
+    var out = ""
+    let count = max(1, chars.count - 1)
+    let pulse = 0.5 + 0.5 * sin(Double(phase) * 0.35)
+    let brightness = 0.82 + (0.32 * pulse)
+
+    for (i, ch) in chars.enumerated() {
+        let t = (Double(i) / Double(count)) + (Double(phase) * 0.06)
+        let wave = 0.5 + 0.5 * sin(t * .pi * 2.0)
+        let r = boostedChannel(mixChannel(110, 255, t: wave), brightness: brightness)
+        let g = boostedChannel(mixChannel(170, 225, t: wave), brightness: brightness)
+        let b = boostedChannel(mixChannel(255, 165, t: wave), brightness: brightness)
+        out += "\(ansiTrueColor(r: r, g: g, b: b, bold: true))\(ch)"
+    }
+    return out
+}
+
+private func mixChannel(_ a: Int, _ b: Int, t: Double) -> Int {
+    Int(Double(a) + (Double(b - a) * min(max(t, 0.0), 1.0)))
+}
+
+private func boostedChannel(_ value: Int, brightness: Double) -> Int {
+    let scaled = Int(Double(value) * brightness)
+    return min(255, max(0, scaled))
+}
+
+private func ansiTrueColor(r: Int, g: Int, b: Int, bold: Bool) -> String {
+    let color = "\u{001B}[38;2;\(r);\(g);\(b)m"
+    return bold ? "\(TUI.bold)\(color)" : color
 }

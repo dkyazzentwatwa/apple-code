@@ -257,15 +257,24 @@ private func parseGenerateToNewNoteRequest(from prompt: String) -> String? {
     return task.isEmpty ? nil : task
 }
 
-private func generateNoteBody(for taskPrompt: String) async -> String? {
+private func generateNoteBody(
+    for taskPrompt: String,
+    modelClient: any ModelClient,
+    timeoutSeconds: Int
+) async -> String? {
     let instructions = """
     You are a concise assistant.
     Return only the requested content as plain text. No preface.
     """
-    let session = LanguageModelSession(instructions: instructions)
     do {
-        let response = try await session.respond(to: taskPrompt)
-        let content = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        let response = try await withResponseTimeout(seconds: timeoutSeconds) {
+            try await modelClient.respond(
+                prompt: taskPrompt,
+                tools: [],
+                instructions: instructions
+            )
+        }
+        let content = response.trimmingCharacters(in: .whitespacesAndNewlines)
         return content.isEmpty ? nil : content
     } catch {
         return nil
@@ -280,7 +289,9 @@ private func looksLikeNoteCreationSuccess(_ text: String) -> Bool {
 
 func resolveNotesComposeFallback(
     userPrompt: String,
-    modelReply: String
+    modelReply: String,
+    modelClient: any ModelClient,
+    timeoutSeconds: Int
 ) async -> String? {
     guard let taskPrompt = parseGenerateToNewNoteRequest(from: userPrompt) else { return nil }
     if looksLikeNoteCreationSuccess(modelReply) { return nil }
@@ -299,7 +310,11 @@ func resolveNotesComposeFallback(
         }
     }
     if noteBody == nil {
-        noteBody = await generateNoteBody(for: taskPrompt)
+        noteBody = await generateNoteBody(
+            for: taskPrompt,
+            modelClient: modelClient,
+            timeoutSeconds: timeoutSeconds
+        )
     }
     guard let body = noteBody, !body.isEmpty else {
         return "Apple Notes:\nCould not generate note content to save."
@@ -316,7 +331,8 @@ func resolveNotesComposeFallback(
 
 func resolveAppleRefusalFallback(
     userPrompt: String,
-    modelReply: String
+    modelReply: String,
+    modelClient: any ModelClient
 ) async -> String? {
     let appleIntent = isAppleIntentPrompt(userPrompt)
     let shouldFallback = looksLikeAppleAccessRefusal(modelReply)
@@ -325,10 +341,13 @@ func resolveAppleRefusalFallback(
         || (isExplicitNotesWriteIntent(userPrompt) && looksLikeNotesListReply(modelReply))
     guard shouldFallback else { return nil }
 
-    return await resolveAppleIntentDirect(userPrompt: userPrompt)
+    return await resolveAppleIntentDirect(userPrompt: userPrompt, modelClient: modelClient)
 }
 
-func resolveAppleIntentDirect(userPrompt: String) async -> String? {
+func resolveAppleIntentDirect(
+    userPrompt: String,
+    modelClient: any ModelClient
+) async -> String? {
     let p = userPrompt.lowercased()
 
     do {
@@ -384,7 +403,11 @@ func resolveAppleIntentDirect(userPrompt: String) async -> String? {
                 var title = parsed.query ?? "New Note"
                 var body = parsed.body ?? ""
                 if body.isEmpty, let task = parseGenerateToNewNoteRequest(from: userPrompt) {
-                    if let generated = await generateNoteBody(for: task) {
+                    if let generated = await generateNoteBody(
+                        for: task,
+                        modelClient: modelClient,
+                        timeoutSeconds: 45
+                    ) {
                         body = generated
                     }
                     if parsed.query == nil {

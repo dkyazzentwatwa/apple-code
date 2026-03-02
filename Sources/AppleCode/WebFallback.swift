@@ -1,5 +1,4 @@
 import Foundation
-import FoundationModels
 
 func extractFirstHTTPURL(from text: String) -> String? {
     let pattern = #"https?://[^\s<>"'\)\]]+"#
@@ -195,7 +194,8 @@ func resolveWebRefusalFallback(
     userPrompt: String,
     modelReply: String,
     instructions: String,
-    timeoutSeconds: Int
+    timeoutSeconds: Int,
+    modelClient: any ModelClient
 ) async -> String? {
     guard shouldUseWebFallback(userPrompt: userPrompt, modelReply: modelReply) else { return nil }
 
@@ -233,11 +233,13 @@ func resolveWebRefusalFallback(
     \(fetchedContext)
     """
 
-    let session = LanguageModelSession(tools: [], instructions: instructions)
     do {
         return try await withResponseTimeout(seconds: timeoutSeconds) {
-            let response = try await session.respond(to: followupPrompt)
-            let content = response.content
+            let content = try await modelClient.respond(
+                prompt: followupPrompt,
+                tools: [],
+                instructions: instructions
+            )
             if shouldUseWebFallback(userPrompt: userPrompt, modelReply: content) || looksLikeGenericRefusal(content) {
                 return buildSourceListFallback(fetchedContext) ?? content
             }

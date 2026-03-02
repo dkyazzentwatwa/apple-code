@@ -11,6 +11,9 @@ enum CLICommand {
     case showMessage(Int)
     case showHelp
     case showModel
+    case setUI(String?)
+    case openSettings
+    case switchSession(String?)
     case changeDirectory(String)
     case clear
     case setTheme(String?)
@@ -59,6 +62,12 @@ func parseCommand(_ input: String) -> CLICommand {
         return .showHelp
     case "m", "model":
         return .showModel
+    case "ui":
+        return .setUI(arg.isEmpty ? nil : arg)
+    case "settings":
+        return .openSettings
+    case "session":
+        return .switchSession(arg.isEmpty ? nil : arg)
     case "cd":
         if !arg.isEmpty {
             return .changeDirectory(arg)
@@ -84,15 +93,20 @@ func printHelp() {
     \(TUI.promptColor)/history [n]\(TUI.reset)      Show recent transcript entries
     \(TUI.promptColor)/show <id>\(TUI.reset)        Show full entry by transcript ID
     \(TUI.promptColor)/model\(TUI.reset) (or /m)     Show current model info
+    \(TUI.promptColor)/settings\(TUI.reset)          Open settings menu (provider/model/ui/theme/session)
+    \(TUI.promptColor)/ui [classic|framed]\(TUI.reset)  Switch REPL renderer mode
+    \(TUI.promptColor)/session <id|next|prev>\(TUI.reset) Quick switch session
     \(TUI.promptColor)/cd <path>\(TUI.reset)        Change working directory
     \(TUI.promptColor)/clear\(TUI.reset) (or /c)    Clear the screen
-    \(TUI.promptColor)/theme <name>\(TUI.reset)     Switch theme (wow, minimal, classic)
+    \(TUI.promptColor)/theme <name>\(TUI.reset)     Switch theme (\(TUITheme.all.map { $0.name }.joined(separator: ", ")))
     \(TUI.promptColor)/help\(TUI.reset) (or /h)    Show this help
     \(TUI.promptColor)/quit\(TUI.reset) (or /q)     Exit apple-code
 
     \(TUI.mutedColor)Compatibility: :commands still work.\(TUI.reset)
 
     \(TUI.mutedColor)Keys: Enter submit, Ctrl+J newline, arrows navigate history/edit.\(TUI.reset)
+    \(TUI.mutedColor)Keys: Ctrl+P settings • Esc(Ctrl+[) prev session • Ctrl+] next session.\(TUI.reset)
+    \(TUI.mutedColor)Provider: apple (AFM) or ollama (local) via /settings.\(TUI.reset)
     \(TUI.mutedColor)Tip: Just type a message to chat. The AI will use tools when needed.\(TUI.reset)
     """)
 }
