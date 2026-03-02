@@ -21,7 +21,7 @@ struct TUITheme {
         name: "wow",
         primary: TUI.Colors.brightCyan,
         secondary: TUI.Colors.brightMagenta,
-        accent: TUI.Colors.brightGreen,
+        accent: TUI.Colors.brightWhite,
         muted: TUI.Colors.brightBlack,
         border: .init(h: "═", v: "║", tl: "╔", tr: "╗", bl: "╚", br: "╝")
     )
@@ -39,7 +39,7 @@ struct TUITheme {
         name: "classic",
         primary: TUI.Colors.cyan,
         secondary: TUI.Colors.magenta,
-        accent: TUI.Colors.green,
+        accent: TUI.Colors.white,
         muted: TUI.Colors.brightBlack,
         border: .init(h: "-", v: "|", tl: "+", tr: "+", bl: "+", br: "+")
     )

@@ -2,6 +2,12 @@ import Foundation
 import Darwin
 
 final class InputComposer {
+    private enum EscapeAction {
+        case none
+        case scrollUp
+        case scrollDown
+    }
+
     private var originalTermios = termios()
     private var rawEnabled = false
     private var history: [String] = []
@@ -50,7 +56,7 @@ final class InputComposer {
             case 23: // Ctrl+W
                 deleteWordBackward(chars: &chars, cursor: &cursor)
             case 27: // Escape sequence
-                handleEscape(chars: &chars, cursor: &cursor)
+                _ = handleEscape(chars: &chars, cursor: &cursor)
             default:
                 if byte >= 32 {
                     chars.insert(Character(UnicodeScalar(byte)), at: cursor)
@@ -60,32 +66,107 @@ final class InputComposer {
         }
     }
 
-    private func handleEscape(chars: inout [Character], cursor: inout Int) {
-        guard let b1 = readByte(), b1 == 91 else { return }
-        guard let b2 = readByte() else { return }
+    // Stable single-line editor for terminals where full-screen redraw can artifact.
+    // Supports arrow keys, history, backspace, and common cursor controls.
+    func readSubmissionInline(
+        prompt: String = "",
+        promptProvider: (() -> String)? = nil,
+        onScroll: ((Int) -> Void)? = nil
+    ) -> String? {
+        guard enableRawMode() else { return readLine(strippingNewline: true) }
+        defer { disableRawMode() }
 
-        switch b2 {
+        var chars: [Character] = []
+        var cursor = 0
+
+        while true {
+            let currentPrompt = promptProvider?() ?? prompt
+            renderInline(prompt: currentPrompt, chars: chars, cursor: cursor)
+            guard let byte = readByte(timeoutMs: 100) else { continue }
+
+            switch byte {
+            case 3: // Ctrl+C
+                print("\r^C\r\n", terminator: "")
+                fflush(stdout)
+                return "/quit"
+            case 10, 13: // Enter
+                print("\r\n", terminator: "")
+                let line = String(chars)
+                return line.trimmingCharacters(in: .newlines).isEmpty ? nil : line
+            case 127, 8: // backspace
+                if cursor > 0 {
+                    cursor -= 1
+                    chars.remove(at: cursor)
+                }
+            case 1: // Ctrl+A
+                cursor = 0
+            case 5: // Ctrl+E
+                cursor = chars.count
+            case 11: // Ctrl+K
+                if cursor < chars.count { chars.removeSubrange(cursor..<chars.count) }
+            case 21: // Ctrl+U
+                if cursor > 0 { chars.removeSubrange(0..<cursor); cursor = 0 }
+            case 23: // Ctrl+W
+                deleteWordBackward(chars: &chars, cursor: &cursor)
+            case 25: // Ctrl+Y scroll up (Mac-friendly fallback for PageUp)
+                onScroll?(10)
+            case 22: // Ctrl+V scroll down (Mac-friendly fallback for PageDown)
+                onScroll?(-10)
+            case 27: // Escape sequence
+                switch handleEscape(chars: &chars, cursor: &cursor) {
+                case .none:
+                    break
+                case .scrollUp:
+                    onScroll?(10)
+                case .scrollDown:
+                    onScroll?(-10)
+                }
+            default:
+                if byte >= 32 {
+                    chars.insert(Character(UnicodeScalar(byte)), at: cursor)
+                    cursor += 1
+                }
+            }
+        }
+    }
+
+    private func handleEscape(chars: inout [Character], cursor: inout Int) -> EscapeAction {
+        guard let b1 = readByte() else { return .none }
+
+        // VT-style arrows/home/end: ESC O A/B/C/D/H/F
+        if b1 == 79 {
+            guard let b2 = readByte() else { return .none }
+            switch b2 {
+            case 65: historyUp(chars: &chars, cursor: &cursor)     // A
+            case 66: historyDown(chars: &chars, cursor: &cursor)   // B
+            case 67: cursor = min(chars.count, cursor + 1)         // C
+            case 68: cursor = max(0, cursor - 1)                   // D
+            case 72: cursor = 0                                    // H
+            case 70: cursor = chars.count                          // F
+            default: break
+            }
+            return .none
+        }
+
+        // CSI-style sequences: ESC [ ...
+        guard b1 == 91, let b2 = readByte() else { return .none }
+        var seq: [UInt8] = [b2]
+        if !(64...126).contains(b2) {
+            while let n = readByte() {
+                seq.append(n)
+                if (64...126).contains(n) { break } // final byte
+            }
+        }
+        guard let final = seq.last else { return .none }
+        let sequence = String(bytes: seq, encoding: .ascii) ?? ""
+
+        switch final {
         case 65: // up
-            if !history.isEmpty {
-                if historyIndex == nil { historyIndex = history.count - 1 }
-                else if let idx = historyIndex, idx > 0 { historyIndex = idx - 1 }
-                if let idx = historyIndex {
-                    chars = Array(history[idx])
-                    cursor = chars.count
-                }
-            }
+            if sequence.contains(";") { return .scrollUp } // modified up arrow (e.g. Option/Shift+Up)
+            historyUp(chars: &chars, cursor: &cursor)
         case 66: // down
-            if let idx = historyIndex {
-                if idx < history.count - 1 {
-                    historyIndex = idx + 1
-                    chars = Array(history[historyIndex!])
-                    cursor = chars.count
-                } else {
-                    historyIndex = nil
-                    chars = []
-                    cursor = 0
-                }
-            }
+            if sequence.contains(";") { return .scrollDown } // modified down arrow
+            historyDown(chars: &chars, cursor: &cursor)
         case 67: // right
             cursor = min(chars.count, cursor + 1)
         case 68: // left
@@ -94,11 +175,46 @@ final class InputComposer {
             cursor = 0
         case 70: // end
             cursor = chars.count
-        case 51: // delete
-            _ = readByte() // swallow ~
-            if cursor < chars.count { chars.remove(at: cursor) }
+        case 126: // tilde-terminated CSI
+            if sequence.hasPrefix("3") { // delete (3~)
+                if cursor < chars.count { chars.remove(at: cursor) }
+            } else if sequence.hasPrefix("1") {
+                cursor = 0
+            } else if sequence.hasPrefix("4") {
+                cursor = chars.count
+            } else if sequence.hasPrefix("5") {
+                return .scrollUp // PageUp (often Fn+Up on macOS terminals)
+            } else if sequence.hasPrefix("6") {
+                return .scrollDown // PageDown (often Fn+Down)
+            }
         default:
             break
+        }
+        return .none
+    }
+
+    private func historyUp(chars: inout [Character], cursor: inout Int) {
+        if !history.isEmpty {
+            if historyIndex == nil { historyIndex = history.count - 1 }
+            else if let idx = historyIndex, idx > 0 { historyIndex = idx - 1 }
+            if let idx = historyIndex {
+                chars = Array(history[idx])
+                cursor = chars.count
+            }
+        }
+    }
+
+    private func historyDown(chars: inout [Character], cursor: inout Int) {
+        if let idx = historyIndex {
+            if idx < history.count - 1 {
+                historyIndex = idx + 1
+                chars = Array(history[historyIndex!])
+                cursor = chars.count
+            } else {
+                historyIndex = nil
+                chars = []
+                cursor = 0
+            }
         }
     }
 
@@ -129,10 +245,55 @@ final class InputComposer {
         rawEnabled = false
     }
 
-    private func readByte() -> UInt8? {
+    private func readByte(timeoutMs: Int32? = nil) -> UInt8? {
+        if let timeoutMs {
+            var pfd = pollfd(fd: STDIN_FILENO, events: Int16(POLLIN), revents: 0)
+            let ready = Darwin.poll(&pfd, 1, timeoutMs)
+            if ready <= 0 { return nil }
+        }
         var c: UInt8 = 0
         let n = read(STDIN_FILENO, &c, 1)
         return n == 1 ? c : nil
+    }
+
+    private func renderInline(prompt: String, chars: [Character], cursor: Int) {
+        let text = String(chars)
+        // Clear current line, re-render prompt + text, then move cursor.
+        print("\r\u{001B}[2K\(prompt)\(text)", terminator: "")
+        let promptWidth = visibleWidth(prompt)
+        let target = max(0, promptWidth + min(cursor, chars.count))
+        print("\r\u{001B}[\(target)C", terminator: "")
+        fflush(stdout)
+    }
+
+    private func visibleWidth(_ text: String) -> Int {
+        // Strip ANSI CSI sequences so cursor math uses terminal-visible width.
+        var width = 0
+        var i = text.unicodeScalars.startIndex
+        let scalars = text.unicodeScalars
+
+        while i < scalars.endIndex {
+            let s = scalars[i]
+            if s.value == 0x1B {
+                let next = scalars.index(after: i)
+                if next < scalars.endIndex, scalars[next].value == 0x5B {
+                    var j = scalars.index(after: next)
+                    while j < scalars.endIndex {
+                        let v = scalars[j].value
+                        if (0x40...0x7E).contains(v) {
+                            i = scalars.index(after: j)
+                            break
+                        }
+                        j = scalars.index(after: j)
+                    }
+                    if j >= scalars.endIndex { break }
+                    continue
+                }
+            }
+            width += 1
+            i = scalars.index(after: i)
+        }
+        return width
     }
 }
 

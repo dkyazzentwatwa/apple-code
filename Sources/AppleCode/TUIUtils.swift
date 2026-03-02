@@ -38,13 +38,13 @@ struct TUI {
     }
 
     static let promptColor = Colors.cyan
-    static let userMessageColor = Colors.green
+    static let userMessageColor = Colors.brightCyan
     static let assistantMessageColor = Colors.white
     static let errorColor = Colors.red
     static let warningColor = Colors.yellow
-    static let headerColor = Colors.cyan
+    static let headerColor = Colors.brightWhite
     static let mutedColor = Colors.brightBlack
-    static let successColor = Colors.green
+    static let successColor = Colors.brightGreen
 }
 
 let banner = """
@@ -90,7 +90,10 @@ func printHeader(model: String? = nil, streaming: Bool = false) {
 func printPrompt() {
     let isTTY = isatty(fileno(stdout)) == 1
     if isTTY {
-        print("\(TUI.promptColor)\(TUI.bold)> \(TUI.reset)", terminator: "")
+        let glyph = "\(TUI.Colors.brightCyan)\(TUI.bold)▒▓█\(TUI.reset)"
+        let label = "\(TUI.Colors.brightMagenta)\(TUI.bold)apple-code\(TUI.reset)"
+        let arrow = "\(TUI.promptColor)\(TUI.bold)>\(TUI.reset)"
+        print("\(glyph) \(label) \(arrow) ", terminator: "")
     } else {
         print("> ", terminator: "")
     }
@@ -105,12 +108,14 @@ func printUserMessage(_ message: String) {
     }
 }
 
-func printAssistantMessage(_ message: String) {
+func printAssistantMessage(_ message: String, verbose: Bool = true) {
     let isTTY = isatty(fileno(stdout)) == 1
+    let summarized = OutputFormatter.format(message, verbose: verbose)
     if isTTY {
-        print("\(TUI.assistantMessageColor)\(message)\(TUI.reset)")
+        let rendered = OutputHighlighter.render(summarized, isTTY: true)
+        print("\(TUI.assistantMessageColor)\(rendered)\(TUI.reset)")
     } else {
-        print(message)
+        print(summarized)
     }
 }
 
@@ -172,29 +177,58 @@ final class Spinner {
     static nonisolated(unsafe) let shared = Spinner()
     
     let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-    var task: Task<Void, Never>?
+    var delayTask: Task<Void, Never>?
+    var spinTask: Task<Void, Never>?
     var frameIndex = 0
+    var startedAt: Date?
+    var isVisible = false
     private init() {}
 }
 
-func startSpinner(message: String = "Thinking") {
+func startSpinner(message: String = "Thinking", delayMs: UInt64 = 200) {
     let isTTY = isatty(fileno(stdout)) == 1
     guard isTTY else { return }
-    
+
+    Spinner.shared.delayTask?.cancel()
+    Spinner.shared.spinTask?.cancel()
     Spinner.shared.frameIndex = 0
-    Spinner.shared.task = Task { [message] in
-        while !Task.isCancelled {
-            let frame = Spinner.shared.frames[Spinner.shared.frameIndex % Spinner.shared.frames.count]
-            print("\r\(TUI.Colors.brightCyan)\(frame)\(TUI.reset) \(message)...", terminator: "")
-            fflush(stdout)
-            Spinner.shared.frameIndex += 1
-            usleep(80_000)
+    Spinner.shared.startedAt = Date()
+    Spinner.shared.isVisible = false
+
+    Spinner.shared.delayTask = Task { [message] in
+        do {
+            try await Task.sleep(nanoseconds: delayMs * 1_000_000)
+        } catch {
+            return
+        }
+        if Task.isCancelled { return }
+
+        Spinner.shared.isVisible = true
+        Spinner.shared.spinTask = Task { [message] in
+            while !Task.isCancelled {
+                let frame = Spinner.shared.frames[Spinner.shared.frameIndex % Spinner.shared.frames.count]
+                print("\r\(TUI.Colors.brightCyan)\(frame)\(TUI.reset) \(TUI.dim)\(message)...\(TUI.reset)", terminator: "")
+                fflush(stdout)
+                Spinner.shared.frameIndex += 1
+                usleep(80_000)
+            }
         }
     }
 }
 
-func stopSpinner() {
-    Spinner.shared.task?.cancel()
-    Spinner.shared.task = nil
-    print("\r" + String(repeating: " ", count: 50) + "\r", terminator: "")
+@discardableResult
+func stopSpinner() -> TimeInterval {
+    Spinner.shared.delayTask?.cancel()
+    Spinner.shared.spinTask?.cancel()
+    Spinner.shared.delayTask = nil
+    Spinner.shared.spinTask = nil
+
+    if Spinner.shared.isVisible {
+        print("\r" + String(repeating: " ", count: 80) + "\r", terminator: "")
+    }
+
+    let elapsed = Date().timeIntervalSince(Spinner.shared.startedAt ?? Date())
+    Spinner.shared.startedAt = nil
+    Spinner.shared.isVisible = false
+    return max(0, elapsed)
 }

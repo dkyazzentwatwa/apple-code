@@ -37,103 +37,128 @@ final class TUIRenderer {
     }
 
     func renderBannerAnimated() {
-        let lines = [
-            "APPLE CODE",
-            "local • on-device • tool-enabled"
-        ]
-        for line in lines {
-            print("\(theme.primary)\(TUI.bold)\(line)\(TUI.reset)")
-            usleep(45_000)
-        }
-        print("\(theme.muted)Type /help for commands. Enter submits, Ctrl+J newline.\(TUI.reset)\n")
+        let c1 = TUI.Colors.brightCyan
+        let c2 = TUI.Colors.brightMagenta
+        let c3 = TUI.Colors.brightWhite
+        let c4 = TUI.Colors.brightWhite
+        let r = TUI.reset
+
+        print("\(c1)╭──────────────────────────────────────────────────────────────────────────────╮\(r)")
+        print("\(c1)│\(r) \(c1)▒▓█\(r)  \(c2)\(TUI.bold)A P P L E   C O D E\(r)  \(c1)█▓▒\(r)  \(c4)\(TUI.bold):: on-device neural shell ::\(r) \(c1)│\(r)")
+        print("\(c1)├──────────────────────────────────────────────────────────────────────────────┤\(r)")
+        print("\(c1)│\(r) \(c3)╔═╗╔═╗╔═╗╦  ╔═╗   ╔═╗╔═╗╔╦╗╔═╗\(r)   \(c4)AI.WORKFLOW.PIPELINE\(r)      \(c1)│\(r)")
+        print("\(c1)│\(r) \(c3)╠═╣╠═╝╠═╝║  ║╣    ║  ║ ║ ║║║╣ \(r)   \(c4)TOOLS • NOTES • WEB • PDF\(r)   \(c1)│\(r)")
+        print("\(c1)│\(r) \(c3)╩ ╩╩  ╩  ╩═╝╚═╝   ╚═╝╚═╝═╩╝╚═╝\(r)   \(c4)SESSION.MEMORY.ACTIVE\(r)      \(c1)│\(r)")
+        print("\(c1)├──────────────────────────────────────────────────────────────────────────────┤\(r)")
+        print("\(c1)│\(r) \(c2)>\(r) \(theme.muted)Type /help • Enter submit • Ctrl+J newline • /theme\(r)                  \(c1)│\(r)")
+        print("\(c1)╰──────────────────────────────────────────────────────────────────────────────╯\(r)\n")
     }
 
     func renderComposer(buffer: String, cursorIndex: Int, cwd: String, model: String = "on-device") {
         clearComposerArea()
 
         let size = terminalSize()
-        let width = max(60, size.width - 2)
-        let inner = max(20, width - 4)
-        let maxComposerHeight = max(6, min(Int(Double(size.height) * 0.30), 12))
-        let bodyRows = max(3, maxComposerHeight - 3)
+        let inner = max(20, size.width - 6) // account for borders + margins
+        let bodyRows = max(3, min(6, Int(Double(size.height) * 0.25)))
 
-        let wrapped = wrap(buffer: buffer, width: inner)
-        let visible = Array(wrapped.suffix(bodyRows))
+        let wrappedResult = wrapWithCursor(buffer: buffer, cursorIndex: cursorIndex, width: inner)
+        let wrapped = wrappedResult.lines
+        let cursorRow = wrappedResult.cursorRow
+        let cursorCol = wrappedResult.cursorCol
+
+        let maxStart = max(0, wrapped.count - bodyRows)
+        let visibleStart = min(max(0, cursorRow - bodyRows + 1), maxStart)
+        var visible = Array(wrapped.dropFirst(visibleStart).prefix(bodyRows))
+        while visible.count < bodyRows { visible.append("") }
+        let cursorVisibleRow = max(0, min(bodyRows - 1, cursorRow - visibleStart))
 
         let b = theme.border
-        let headerText = " \(theme.accent)[\(model)]\(TUI.reset) \(theme.secondary)[\(cwd)]\(TUI.reset) "
-        let topPad = max(0, inner - visibleLength(headerText))
-        print("\(theme.primary)\(b.tl)\(String(repeating: b.h, count: 1))\(headerText)\(String(repeating: b.h, count: topPad + 1))\(b.tr)\(TUI.reset)")
+        let cwdCompact = truncateMiddle(cwd, maxChars: max(10, inner - 18))
+        let headerPlain = "[\(model)] [\(cwdCompact)]"
+        let headerText = clip(headerPlain, width: inner)
+        let headerPad = max(0, inner - headerText.count)
+
+        print("\(theme.primary)\(b.tl)\(String(repeating: b.h, count: inner + 2))\(b.tr)\(TUI.reset)")
+        print("\(theme.primary)\(b.v)\(TUI.reset) \(theme.accent)\(headerText)\(TUI.reset)\(String(repeating: " ", count: headerPad)) \(theme.primary)\(b.v)\(TUI.reset)")
 
         for line in visible {
-            let clipped = line.count > inner ? String(line.prefix(inner)) : line
-            let pad = max(0, inner - visibleLength(clipped))
+            let clipped = clip(line, width: inner)
+            let pad = max(0, inner - clipped.count)
             print("\(theme.primary)\(b.v)\(TUI.reset) \(clipped)\(String(repeating: " ", count: pad)) \(theme.primary)\(b.v)\(TUI.reset)")
         }
 
-        let hint = "Enter submit • Ctrl+J newline • /theme"
-        let hintTrim = hint.count > inner ? String(hint.prefix(inner)) : hint
-        let hintPad = max(0, inner - visibleLength(hintTrim))
-        print("\(theme.primary)\(b.v)\(TUI.reset) \(theme.muted)\(hintTrim)\(TUI.reset)\(String(repeating: " ", count: hintPad)) \(theme.primary)\(b.v)\(TUI.reset)")
-        print("\(theme.primary)\(b.bl)\(String(repeating: b.h, count: inner + 2))\(b.br)\(TUI.reset)", terminator: "")
+        let hint = "Enter submit | Ctrl+J newline | /theme"
+        let hintText = clip(hint, width: inner)
+        let hintPad = max(0, inner - hintText.count)
+        print("\(theme.primary)\(b.v)\(TUI.reset) \(theme.muted)\(hintText)\(TUI.reset)\(String(repeating: " ", count: hintPad)) \(theme.primary)\(b.v)\(TUI.reset)")
+        print("\(theme.primary)\(b.bl)\(String(repeating: b.h, count: inner + 2))\(b.br)\(TUI.reset)")
 
-        let (cursorRow, cursorCol) = cursorPosition(buffer: buffer, cursorIndex: cursorIndex, width: inner, bodyRows: bodyRows)
-        let totalLines = visible.count + 3
-        let targetLine = 1 + cursorRow
+        let totalLines = bodyRows + 4
+        let targetLine = 2 + cursorVisibleRow // top border + header row + body offset
         let moveUp = max(0, totalLines - 1 - targetLine)
-        if moveUp > 0 {
-            print("\u{001B}[\(moveUp)A", terminator: "")
-        }
-        print("\r\u{001B}[\(cursorCol + 2)C", terminator: "")
+        if moveUp > 0 { print("\u{001B}[\(moveUp)A", terminator: "") }
+        print("\r\u{001B}[\(min(inner, cursorCol) + 2)C", terminator: "")
         fflush(stdout)
-
         lastRenderedLines = totalLines
     }
 
-    private func wrap(buffer: String, width: Int) -> [String] {
-        let logicalLines = buffer.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        var out: [String] = []
-        for line in logicalLines {
-            if line.isEmpty {
-                out.append("")
-                continue
-            }
-            var current = ""
-            for ch in line {
-                current.append(ch)
-                if current.count >= width {
-                    out.append(current)
-                    current = ""
-                }
-            }
-            out.append(current)
-        }
-        return out.isEmpty ? [""] : out
-    }
-
-    private func cursorPosition(buffer: String, cursorIndex: Int, width: Int, bodyRows: Int) -> (Int, Int) {
+    private func wrapWithCursor(buffer: String, cursorIndex: Int, width: Int) -> (lines: [String], cursorRow: Int, cursorCol: Int) {
         let chars = Array(buffer)
-        var row = 0
-        var col = 0
+        var lines: [String] = [""]
+        var row = 0, col = 0
         var i = 0
-        while i < min(cursorIndex, chars.count) {
-            if chars[i] == "\n" {
+        while i < chars.count {
+            if i == cursorIndex {
+                // Keep cursor tracked before consuming char at cursor index.
+            }
+            let ch = chars[i]
+            if ch == "\n" {
                 row += 1
                 col = 0
+                lines.append("")
             } else {
+                lines[row].append(ch)
                 col += 1
                 if col >= width {
                     row += 1
                     col = 0
+                    lines.append("")
                 }
             }
             i += 1
         }
-        let visibleRow = max(0, min(bodyRows - 1, row - max(0, row - (bodyRows - 1))))
-        return (visibleRow, col)
+
+        // Recompute cursor row/col by replaying up to cursorIndex.
+        var cRow = 0, cCol = 0
+        i = 0
+        while i < min(cursorIndex, chars.count) {
+            let ch = chars[i]
+            if ch == "\n" {
+                cRow += 1
+                cCol = 0
+            } else {
+                cCol += 1
+                if cCol >= width {
+                    cRow += 1
+                    cCol = 0
+                }
+            }
+            i += 1
+        }
+        if lines.isEmpty { lines = [""] }
+        return (lines, cRow, cCol)
     }
 
-    private func visibleLength(_ s: String) -> Int {
-        return s.count
+    private func clip(_ text: String, width: Int) -> String {
+        if text.count <= width { return text }
+        return String(text.prefix(width))
+    }
+
+    private func truncateMiddle(_ text: String, maxChars: Int) -> String {
+        if text.count <= maxChars { return text }
+        let keep = max(4, (maxChars - 1) / 2)
+        let prefix = text.prefix(keep)
+        let suffix = text.suffix(max(2, maxChars - keep - 1))
+        return "\(prefix)…\(suffix)"
     }
 }

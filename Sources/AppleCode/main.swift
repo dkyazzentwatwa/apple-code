@@ -21,6 +21,7 @@ func printUsage() {
       --run-notes-action a   Run notes tool directly and exit
       --run-notes-query q    Query/title for --run-notes-action
       --run-notes-body b     Body text for --run-notes-action
+      --verbose              Show full output (disable summary mode)
       -i, --interactive      Force interactive mode (default if no prompt)
       --resume <session-id>  Resume a session
       --new                  Start a new session (clears history)
@@ -32,6 +33,8 @@ func printUsage() {
       /sessions, /s         List saved sessions
       /resume <id>          Resume a session
       /delete <id>          Delete a session
+      /history [n]          Show recent transcript entries
+      /show <id>            Show full transcript entry by ID
       /model, /m            Show model info
       /cd <path>            Change directory
       /clear, /c            Clear screen
@@ -183,6 +186,7 @@ var runWebSearchLimit = 5
 var runNotesAction: String?
 var runNotesQuery: String?
 var runNotesBody: String?
+var verbose = false
 var forceInteractive = false
 var resumeSessionId: UUID?
 var startNewSession = false
@@ -225,6 +229,8 @@ while i < args.count {
     case "--run-notes-body":
         i += 1
         if i < args.count { runNotesBody = args[i] }
+    case "--verbose":
+        verbose = true
     case "-i", "--interactive":
         forceInteractive = true
     case "--resume":
@@ -317,7 +323,8 @@ if shouldBeInteractive {
         timeout: timeout,
         includeAppleTools: !noAppleTools,
         includeWebTools: !noWebTools,
-        includeBrowserTools: !noBrowserTools
+        includeBrowserTools: !noBrowserTools,
+        verbose: verbose
     )
 }
 
@@ -336,8 +343,12 @@ let tools = routeTools(
 var defaultPreamble = """
 You are apple-code, a local AI coding assistant. Be concise.
 Working directory: \(workingDir)
-Only use tools when the user asks. For greetings or chat, just respond with text.
-Never create, send, or modify anything unless explicitly asked.
+For greetings or chat, respond naturally with plain text.
+For harmless requests (jokes, explanations, brainstorming, code snippets, styling help), answer directly and do not refuse.
+Do not claim inability unless the request is actually disallowed or impossible.
+Use tools only when they materially help with what the user asked.
+Never create, send, or modify external resources unless explicitly asked.
+If a request is unclear, ask one concise clarifying question instead of refusing.
 """
 if !noWebTools {
     defaultPreamble += """
@@ -362,6 +373,10 @@ For browser tasks, use the agentBrowser tool.
 Use this sequence for web interaction: open -> snapshot -> interact -> snapshot.
 """
 }
+defaultPreamble += """
+
+For shell/terminal requests, use the runCommand tool instead of saying you cannot execute commands.
+"""
 let instructions = systemInstructions.map { "\(defaultPreamble)\n\($0)" } ?? defaultPreamble
 
 let llmSession = LanguageModelSession(tools: tools, instructions: instructions)
@@ -398,7 +413,15 @@ do {
         content = recovered
     }
 
-    print(content)
+    if let recovered = await resolveCommandRefusalFallback(
+        userPrompt: prompt,
+        modelReply: content,
+        timeoutSeconds: timeout
+    ) {
+        content = recovered
+    }
+
+    printAssistantMessage(content, verbose: verbose)
 } catch {
     let err = error.localizedDescription
     if !noAppleTools,
@@ -406,7 +429,7 @@ do {
        (err.contains("Failed to deserialize a Generable type")
         || err.contains("The operation couldn’t be completed")) {
         if let recovered = await resolveAppleIntentDirect(userPrompt: prompt) {
-            print(recovered)
+            printAssistantMessage(recovered, verbose: verbose)
             exit(0)
         }
     }
