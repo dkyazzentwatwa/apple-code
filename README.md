@@ -12,7 +12,7 @@
   <a href="https://github.com/dkyazzentwatwa/apple-code/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/dkyazzentwatwa/apple-code/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Swift 6.2" src="https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white" />
   <img alt="macOS 26+" src="https://img.shields.io/badge/macOS-26%2B-000000?logo=apple&logoColor=white" />
-  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/dkyazzentwatwa/apple-code" /></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg" /></a>
 </p>
 
 `apple-code` is a Swift CLI assistant for local coding workflows on macOS. It runs on-device with Apple Foundation Models by default, and can switch to local Ollama models (including Qwen variants) with no cloud API dependency.
