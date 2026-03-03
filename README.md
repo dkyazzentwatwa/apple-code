@@ -15,6 +15,11 @@
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg" /></a>
 </p>
 
+<p align="center">
+  <img src="assets/apple-code1.png" alt="apple-code screenshot 1" width="48%" />
+  <img src="assets/apple-code2.png" alt="apple-code screenshot 2" width="48%" />
+</p>
+
 `apple-code` is a Swift CLI assistant for local coding workflows on macOS. It runs on-device with Apple Foundation Models by default, and can switch to local Ollama models (including Qwen variants) with no cloud API dependency.
 
 ## Highlights
