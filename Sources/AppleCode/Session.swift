@@ -132,10 +132,13 @@ final class SessionManager {
             return []
         }
 
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
         return contents.compactMap { url -> SessionSummary? in
             guard url.pathExtension == "json" else { return nil }
             guard let data = try? Data(contentsOf: url),
-                  let session = try? JSONDecoder().decode(Session.self, from: data) else {
+                  let session = try? decoder.decode(Session.self, from: data) else {
                 return nil
             }
             return SessionSummary(

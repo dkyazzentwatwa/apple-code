@@ -301,13 +301,46 @@ final class InputComposer {
     }
 
     private func renderInline(prompt: String, chars: [Character], cursor: Int) {
-        let text = String(chars)
+        let time = Date().timeIntervalSinceReferenceDate
+        let text = glowingUserInputText(chars: chars, time: time)
         // Clear current line, re-render prompt + text, then move cursor.
-        print("\r\u{001B}[2K\(prompt)\(text)", terminator: "")
+        print("\r\u{001B}[2K\(prompt)\(text)\(TUI.reset)", terminator: "")
         let promptWidth = visibleWidth(prompt)
         let target = max(0, promptWidth + min(cursor, chars.count))
         print("\r\u{001B}[\(target)C", terminator: "")
         fflush(stdout)
+    }
+
+    private func glowingUserInputText(chars: [Character], time: TimeInterval) -> String {
+        guard !chars.isEmpty else { return "" }
+        var out = ""
+        let count = max(1, chars.count - 1)
+        let pulse = 0.5 + 0.5 * sin(time * 2.1)
+        let brightness = 0.88 + (0.24 * pulse)
+
+        for (index, ch) in chars.enumerated() {
+            let position = (Double(index) / Double(count)) + (time * 0.55)
+            let wave = 0.5 + 0.5 * sin(position * .pi * 2.0)
+            let r = boostedChannel(mixChannel(85, 180, t: wave), brightness: brightness)
+            let g = boostedChannel(mixChannel(215, 255, t: wave), brightness: brightness)
+            let b = boostedChannel(mixChannel(255, 210, t: wave), brightness: brightness)
+            out += "\(ansiTrueColor(r: r, g: g, b: b, bold: true))\(ch)"
+        }
+        return out
+    }
+
+    private func mixChannel(_ a: Int, _ b: Int, t: Double) -> Int {
+        Int(Double(a) + (Double(b - a) * min(max(t, 0.0), 1.0)))
+    }
+
+    private func boostedChannel(_ value: Int, brightness: Double) -> Int {
+        let scaled = Int(Double(value) * brightness)
+        return min(255, max(0, scaled))
+    }
+
+    private func ansiTrueColor(r: Int, g: Int, b: Int, bold: Bool) -> String {
+        let color = "\u{001B}[38;2;\(r);\(g);\(b)m"
+        return bold ? "\(TUI.bold)\(color)" : color
     }
 
     func readMenuSelection(title: String, options: [String]) -> Int? {

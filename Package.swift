@@ -8,6 +8,11 @@ let package = Package(
         .executableTarget(
             name: "apple-code",
             path: "Sources/AppleCode"
+        ),
+        .testTarget(
+            name: "AppleCodeTests",
+            dependencies: ["apple-code"],
+            path: "Tests/AppleCodeTests"
         )
     ]
 )
