@@ -3,7 +3,7 @@ import FoundationModels
 
 struct WriteFileTool: Tool {
     let name = "writeFile"
-    let description = "Write content to a file"
+    let description = "Write content to a file. For targeted edits to existing files, prefer editFile."
 
     @Generable
     struct Arguments {
@@ -16,12 +16,35 @@ struct WriteFileTool: Tool {
     func call(arguments: Arguments) async throws -> String {
         let url = URL(fileURLWithPath: arguments.path)
         let dir = url.deletingLastPathComponent()
+        let alreadyExists = FileManager.default.fileExists(atPath: url.path)
+        if alreadyExists {
+            appendAuditLog(path: arguments.path, action: "OVERWRITE")
+        }
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             try arguments.content.write(to: url, atomically: true, encoding: .utf8)
-            return "Successfully wrote \(arguments.content.count) characters to \(arguments.path)"
+            let notice = alreadyExists ? " (overwrote existing file)" : ""
+            return "Successfully wrote \(arguments.content.count) characters to \(arguments.path)\(notice)"
         } catch {
             return "Error writing file: \(error.localizedDescription)"
+        }
+    }
+
+    private func appendAuditLog(path: String, action: String) {
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".apple-code")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let logURL = dir.appendingPathComponent("command_audit.log")
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let entry = "[\(timestamp)] \(action): \(path)\n"
+        if let data = entry.data(using: .utf8) {
+            if let fh = try? FileHandle(forWritingTo: logURL) {
+                fh.seekToEndOfFile()
+                fh.write(data)
+                try? fh.close()
+            } else {
+                try? data.write(to: logURL)
+            }
         }
     }
 }

@@ -104,10 +104,10 @@ struct ModelConfig: Codable, Sendable {
         }
 
         let cleanedPath = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        if cleanedPath.isEmpty {
-            components.path = "/v1"
-        } else {
+        if !cleanedPath.isEmpty {
             components.path = "/" + cleanedPath
+        } else {
+            components.path = ""
         }
 
         guard let url = components.url else {

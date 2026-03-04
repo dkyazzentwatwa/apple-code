@@ -38,6 +38,13 @@ enum ToolBridge {
                 let content = try requiredString(args, key: "content")
                 return try await WriteFileTool().call(arguments: .init(path: path, content: content))
 
+            case "editFile":
+                let path = try requiredString(args, key: "path")
+                let oldString = try requiredString(args, key: "oldString")
+                // newString may be empty (deletion), so don't use requiredString
+                let newString = (args["newString"] as? String) ?? ""
+                return try await EditFileTool().call(arguments: .init(path: path, oldString: oldString, newString: newString))
+
             case "listDirectory":
                 let path = optionalString(args, key: "path")
                 let recursive = optionalBool(args, key: "recursive")
@@ -122,6 +129,11 @@ enum ToolBridge {
                 let action = try requiredString(args, key: "action")
                 let query = optionalString(args, key: "query")
                 return try await MessagesTool().call(arguments: .init(action: action, query: query))
+
+            case "git":
+                let action = try requiredString(args, key: "action")
+                let arg = optionalString(args, key: "arg")
+                return try await GitTool().call(arguments: .init(action: action, arg: arg))
 
             default:
                 return "Error: Unsupported tool '\(toolName)'."
@@ -222,6 +234,15 @@ enum ToolBridge {
                     "content": stringProperty("File content"),
                 ],
                 required: ["path", "content"]
+            )
+        case "editFile":
+            return schemaObject(
+                properties: [
+                    "path": stringProperty("File path"),
+                    "oldString": stringProperty("Exact string to find (must appear exactly once)"),
+                    "newString": stringProperty("Replacement string"),
+                ],
+                required: ["path", "oldString", "newString"]
             )
         case "listDirectory":
             return schemaObject(
@@ -335,6 +356,14 @@ enum ToolBridge {
                 properties: [
                     "action": stringProperty("Action name"),
                     "query": stringProperty("Search text"),
+                ],
+                required: ["action"]
+            )
+        case "git":
+            return schemaObject(
+                properties: [
+                    "action": stringProperty("Action: status | diff | log | commit | stash | branch_list | blame"),
+                    "arg": stringProperty("File path for blame, commit message for commit, or stash op (push/pop/list)"),
                 ],
                 required: ["action"]
             )

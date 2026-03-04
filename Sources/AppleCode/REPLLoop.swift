@@ -9,6 +9,56 @@ private let sigwinchHandler: @convention(c) (Int32) -> Void = { _ in
     ResizeSignalState.triggered = 1
 }
 
+/// Holds the cancel closure for the currently-running generation task so the
+/// SIGINT handler can cancel it without capturing the Task directly.
+private enum GenerationInterrupt {
+    static nonisolated(unsafe) var cancelCurrent: (() -> Void)? = nil
+}
+
+private let sigintHandler: @convention(c) (Int32) -> Void = { _ in
+    if let cancel = GenerationInterrupt.cancelCurrent {
+        cancel()
+    } else {
+        exit(0)
+    }
+}
+
+/// Wrapper so we can pass [any Tool] across task boundaries without
+/// triggering Swift 6 region-isolation errors from inout contexts.
+private struct ToolsBag: @unchecked Sendable {
+    let tools: [any Tool]
+}
+
+/// Run the model call in a cancellable Task from a scope that has no inout
+/// bindings, so Swift 6 region isolation is satisfied.
+private func runGenerationTask(
+    modelClient: any ModelClient,
+    modelPrompt: String,
+    toolsBag: ToolsBag,
+    instructions: String,
+    streamBuffer: StreamEventBuffer,
+    activeModelConfig: ModelConfig,
+    timeout: Int
+) async throws -> String {
+    let genTask = Task<String, Error> {
+        try await withResponseTimeout(
+            seconds: effectiveResponseTimeout(for: activeModelConfig, requestedSeconds: timeout)
+        ) {
+            try await modelClient.respondStream(
+                prompt: modelPrompt,
+                tools: toolsBag.tools,
+                instructions: instructions,
+                onEvent: { event in
+                    await streamBuffer.record(event)
+                }
+            )
+        }
+    }
+    GenerationInterrupt.cancelCurrent = { genTask.cancel() }
+    defer { GenerationInterrupt.cancelCurrent = nil }
+    return try await genTask.value
+}
+
 private actor StreamEventBuffer {
     private var state: String = "thinking"
     private var preview: String = ""
@@ -78,6 +128,9 @@ func runInteractiveREPL(
     var recentSessions: [SessionSummary] = await SessionManager.shared.listSessions()
     var selectedSessionChipIndex = 0
 
+    // Install SIGINT handler for generation cancellation.
+    _ = Darwin.signal(SIGINT, sigintHandler)
+
     if useAdvancedUI {
         _ = Darwin.signal(SIGWINCH, sigwinchHandler)
         viewport = ConversationViewport()
@@ -119,9 +172,9 @@ func runInteractiveREPL(
         printBanner()
     }
 
-    var defaultPreamble = """
+    // Build base preamble (without working dir — that's added dynamically per-request)
+    var basePreamble = """
     You are apple-code, a local AI coding assistant. Be concise.
-    Working directory: \(session.workingDir)
     For greetings or chat, respond naturally with plain text.
     For harmless requests (jokes, explanations, brainstorming, code snippets, styling help), answer directly and do not refuse.
     Do not claim inability unless the request is actually disallowed or impossible.
@@ -130,7 +183,7 @@ func runInteractiveREPL(
     If a request is unclear, ask one concise clarifying question instead of refusing.
     """
     if includeWebTools {
-        defaultPreamble += """
+        basePreamble += """
 
     For web retrieval, prefer webSearch for discovery and webFetch for direct page content.
     Do not claim you cannot access websites when web tools are available; use webFetch/webSearch first.
@@ -138,7 +191,7 @@ func runInteractiveREPL(
     """
     }
     if includeAppleTools {
-        defaultPreamble += """
+        basePreamble += """
 
     For Apple apps (Reminders, Notes, Calendar, Mail, Messages), use available Apple tools instead of saying you cannot access them.
     If requested Apple data is available via tools, retrieve it directly.
@@ -146,17 +199,26 @@ func runInteractiveREPL(
     """
     }
     if includeBrowserTools {
-        defaultPreamble += """
+        basePreamble += """
 
     For browser tasks, use the agentBrowser tool.
     Use this sequence for web interaction: open -> snapshot -> interact -> snapshot.
     """
     }
-    defaultPreamble += """
+    basePreamble += """
 
     For shell/terminal requests, use the runCommand tool instead of saying you cannot execute commands.
     """
-    let instructions = systemInstructions.map { "\(defaultPreamble)\n\($0)" } ?? defaultPreamble
+
+    /// Compute current instructions, injecting the live working dir and project context.
+    func buildInstructions() -> String {
+        let preamble = "Working directory: \(session.workingDir)\n" + basePreamble
+        let base = systemInstructions.map { "\(preamble)\n\($0)" } ?? preamble
+        if let ctx = loadProjectContextFile(workingDir: session.workingDir) {
+            return "\(base)\n\n---\nProject context (APPLE-CODE.md):\n\(ctx)"
+        }
+        return base
+    }
 
     if !session.messages.isEmpty {
         if useAdvancedUI, let renderer, var state = uiState, let viewport {
@@ -741,6 +803,47 @@ func runInteractiveREPL(
             }
             continue
 
+        case .compact:
+            // Summarize old turns via a second model call and replace messages
+            if session.messages.isEmpty {
+                if useAdvancedUI, let renderer, var state = uiState, let viewport {
+                    viewport.append(role: "system", content: "No messages to compact.")
+                    renderAdvancedShell(renderer: renderer, state: &state, viewport: viewport, cwd: session.workingDir, mode: activeModelConfig.modeLabel)
+                    uiState = state
+                } else {
+                    printMuted("No messages to compact.")
+                }
+                continue
+            }
+            let summaryPrompt = TokenBudgetManager.buildCompactSummaryPrompt(messages: session.messages)
+            do {
+                let summaryClient = try makeModelClient(config: activeModelConfig)
+                let summary = try await summaryClient.respond(
+                    prompt: summaryPrompt,
+                    tools: [],
+                    instructions: "You are a concise summarizer. Reply with plain bullet points only."
+                )
+                session.messages = [Message(role: "assistant", content: "[Compacted context]\n\(summary)")]
+                let msg = "Compacted \(session.messages.count) messages into a summary."
+                if useAdvancedUI, let renderer, var state = uiState, let viewport {
+                    viewport.reset()
+                    viewport.append(role: "system", content: msg)
+                    renderAdvancedShell(renderer: renderer, state: &state, viewport: viewport, cwd: session.workingDir, mode: activeModelConfig.modeLabel, modelConfig: activeModelConfig, uiMode: uiMode, streamState: streamState, contextMeter: conversationContextMeter(session: session), toolTimeline: toolTimeline, streamingPreview: streamingPreview, sessions: recentSessions, selectedSessionChipIndex: selectedSessionChipIndex)
+                    uiState = state
+                } else {
+                    printSuccess(msg)
+                }
+            } catch {
+                if useAdvancedUI, let renderer, var state = uiState, let viewport {
+                    viewport.append(role: "error", content: "Compact failed: \(error.localizedDescription)")
+                    renderAdvancedShell(renderer: renderer, state: &state, viewport: viewport, cwd: session.workingDir, mode: activeModelConfig.modeLabel)
+                    uiState = state
+                } else {
+                    printError("Compact failed: \(error.localizedDescription)")
+                }
+            }
+            continue
+
         case .none:
             break
         }
@@ -782,15 +885,46 @@ func runInteractiveREPL(
         do {
             let modelClient = try makeModelClient(config: activeModelConfig)
             let streamBuffer = StreamEventBuffer()
-            fullResponse = try await withResponseTimeout(seconds: effectiveResponseTimeout(for: activeModelConfig, requestedSeconds: timeout)) {
-                try await modelClient.respondStream(
-                    prompt: modelPrompt,
-                    tools: tools,
-                    instructions: instructions,
-                    onEvent: { event in
-                        await streamBuffer.record(event)
-                    }
+            let currentInstructions = buildInstructions()
+            do {
+                fullResponse = try await runGenerationTask(
+                    modelClient: modelClient,
+                    modelPrompt: modelPrompt,
+                    toolsBag: ToolsBag(tools: tools),
+                    instructions: currentInstructions,
+                    streamBuffer: streamBuffer,
+                    activeModelConfig: activeModelConfig,
+                    timeout: timeout
                 )
+            } catch is CancellationError {
+                let _ = stopSpinner()
+                streamState = "idle"
+                if useAdvancedUI, let renderer, var state = uiState, let viewport {
+                    viewport.append(role: "system", content: "Generation cancelled.")
+                    renderAdvancedShell(
+                        renderer: renderer,
+                        state: &state,
+                        viewport: viewport,
+                        cwd: session.workingDir,
+                        mode: activeModelConfig.modeLabel,
+                        modelConfig: activeModelConfig,
+                        uiMode: uiMode,
+                        streamState: streamState,
+                        contextMeter: conversationContextMeter(session: session),
+                        toolTimeline: toolTimeline,
+                        streamingPreview: streamingPreview,
+                        sessions: recentSessions,
+                        selectedSessionChipIndex: selectedSessionChipIndex
+                    )
+                    uiState = state
+                } else {
+                    print("\nGeneration cancelled.")
+                }
+                // Remove the incomplete user message so session stays consistent
+                if !session.messages.isEmpty, session.messages.last?.role == "user" {
+                    session.messages.removeLast()
+                }
+                continue
             }
             let streamSnapshot = await streamBuffer.snapshot()
             streamState = streamSnapshot.state
@@ -820,7 +954,7 @@ func runInteractiveREPL(
                let recovered = await resolveWebRefusalFallback(
                    userPrompt: line,
                    modelReply: fullResponse,
-                   instructions: instructions,
+                   instructions: currentInstructions,
                    timeoutSeconds: timeout,
                    modelClient: modelClient
                ) {
@@ -831,6 +965,13 @@ func runInteractiveREPL(
                 userPrompt: line,
                 modelReply: fullResponse,
                 timeoutSeconds: timeout
+            ) {
+                fullResponse = recovered
+            }
+
+            if let recovered = await resolveFilesystemRefusalFallback(
+                userPrompt: line,
+                modelReply: fullResponse
             ) {
                 fullResponse = recovered
             }
@@ -868,6 +1009,7 @@ func runInteractiveREPL(
                 printAssistantMessage(fullResponse, verbose: true)
             }
         } catch {
+            GenerationInterrupt.cancelCurrent = nil
             let _ = stopSpinner()
             streamState = "error"
             let err = error.localizedDescription
@@ -1286,8 +1428,8 @@ private func wrappedIndex(_ value: Int, count: Int) -> Int {
 }
 
 private func conversationContextMeter(session: Session) -> String {
-    let approxTokens = max(1, session.messages.reduce(0) { $0 + ($1.content.count / 4) })
-    let budget = 4096
+    let approxTokens = TokenBudgetManager.estimatedUsage(messages: session.messages)
+    let budget = TokenBudgetManager.tokenBudget(for: session.modelConfig?.provider ?? .apple)
     let ratio = min(1.0, Double(approxTokens) / Double(budget))
     let blocks = 10
     let filled = min(blocks, Int((ratio * Double(blocks)).rounded(.awayFromZero)))
@@ -1836,6 +1978,24 @@ private func buildPromptWithMemory(userInput: String, priorMessages: [Message]) 
     Current user message:
     \(userInput)
     """
+}
+
+/// Loads APPLE-CODE.md or CLAUDE.md from the working directory as project context.
+/// Returns the content capped at 8000 characters, or nil if neither file exists.
+func loadProjectContextFile(workingDir: String) -> String? {
+    let candidates = ["APPLE-CODE.md", "CLAUDE.md"]
+    for name in candidates {
+        let path = (workingDir as NSString).appendingPathComponent(name)
+        if let content = try? String(contentsOfFile: path, encoding: .utf8) {
+            let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { continue }
+            if trimmed.count > 8000 {
+                return String(trimmed.prefix(8000)) + "\n... [truncated at 8000 chars]"
+            }
+            return trimmed
+        }
+    }
+    return nil
 }
 
 private func shouldUseConversationMemory(for userInput: String) -> Bool {

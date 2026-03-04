@@ -17,6 +17,7 @@ enum CLICommand {
     case changeDirectory(String)
     case clear
     case setTheme(String?)
+    case compact
     case none
 }
 
@@ -77,6 +78,8 @@ func parseCommand(_ input: String) -> CLICommand {
         return .clear
     case "theme":
         return .setTheme(arg.isEmpty ? nil : arg)
+    case "compact":
+        return .compact
     default:
         return .none
     }
@@ -99,6 +102,7 @@ func printHelp() {
     \(TUI.promptColor)/cd <path>\(TUI.reset)        Change working directory
     \(TUI.promptColor)/clear\(TUI.reset) (or /c)    Clear the screen
     \(TUI.promptColor)/theme <name>\(TUI.reset)     Switch theme (\(TUITheme.all.map { $0.name }.joined(separator: ", ")))
+    \(TUI.promptColor)/compact\(TUI.reset)            Summarize old turns to free context window
     \(TUI.promptColor)/help\(TUI.reset) (or /h)    Show this help
     \(TUI.promptColor)/quit\(TUI.reset) (or /q)     Exit apple-code
 

@@ -8,10 +8,10 @@ func printUsage() {
     Usage: apple-code [options] ["prompt"]
 
     Options:
-      --system "..."          Custom system instructions
+      --system "..."          Custom system instructions (overrides config file)
       --cwd /path/to/dir     Working directory for file/command tools
-      --provider <name>      Model provider: apple | ollama
-      --model <id>           Model ID (ollama)
+      --provider <name>      Model provider: apple | ollama (overrides config file)
+      --model <id>           Model ID (ollama, overrides config file)
       --base-url <url>       Base URL for ollama (default: http://127.0.0.1:11434)
       --ui <mode>            UI mode: classic | framed
       --timeout N            Max seconds (default: 120)
@@ -31,6 +31,14 @@ func printUsage() {
       --new                  Start a new session (clears history)
       -h, --help             Show this help
 
+    Config files (key=value, loaded automatically):
+      ~/.apple-code/config   Global config
+      ./.apple-code          Project config (overrides global)
+      Keys: provider, model, base_url, theme, ui_mode, system_prompt
+
+    Project context:
+      APPLE-CODE.md or CLAUDE.md in CWD is auto-loaded as system context (8000 char limit)
+
     Interactive Commands:
       /quit, /q             Exit and save session
       /new, /n              Start new session
@@ -41,12 +49,14 @@ func printUsage() {
       /show <id>            Show full transcript entry by ID
       /model, /m            Show model info
       /settings             Open settings menu (provider/model/ui/theme/session)
+      /compact              Summarize old turns to free context window
       /ui [mode]            Switch UI mode (classic, framed)
       /session ...          Quick session switch (next, prev, id)
       /cd <path>            Change directory
       /clear, /c            Clear screen
       /theme <name>         Switch theme (wow, minimal, classic, solar, ocean, forest)
       /help, /h             Show help
+      Ctrl+C                Cancel current generation
       (:commands still supported for compatibility)
 
     Examples:
@@ -57,6 +67,8 @@ func printUsage() {
 
       # One-off mode
       apple-code "List files in current directory"
+      apple-code "git status"
+      apple-code "edit line 5 of hello.py to print goodbye"
       echo "Explain this code" | apple-code
       apple-code --resume <session-id>
     """)
@@ -106,10 +118,35 @@ func routeTools(
         }
     }
 
-    let wantsFile = !hasNotesIntent && (p.contains("file") || p.contains("readme") || p.contains("package.swift") ||
-                    p.contains("read the") || p.contains("read this") || p.contains("show me the") ||
-                    p.contains("open ") || p.contains("contents of") || p.contains("write to") ||
-                    p.contains("create a file") || p.contains("save to") || p.contains("edit "))
+    // Git intent must be computed first so wantsFile can exclude it.
+    let wantsGit = !hasNotesIntent && (
+        words.contains("git") ||
+        words.contains("diff") ||
+        words.contains("blame") ||
+        words.contains("stash") ||
+        words.contains("staged") ||
+        words.contains("unstaged") ||
+        words.contains("untracked") ||
+        words.contains("commit") ||
+        words.contains("commits") ||
+        words.contains("branch") ||
+        words.contains("branches") ||
+        p.contains("what changed") ||
+        p.contains("what's changed") ||
+        p.contains("recent commit") ||
+        p.contains("commit history") ||
+        p.contains("working tree") ||
+        p.contains("show diff") ||
+        p.contains("see diff") ||
+        p.contains("show status") ||
+        p.contains("repo status")
+    )
+
+    let wantsFile = !hasNotesIntent && !wantsGit && (
+        p.contains("file") || p.contains("readme") || p.contains("package.swift") ||
+        p.contains("read the") || p.contains("read this") || p.contains("show me the") ||
+        p.contains("open ") || p.contains("contents of") || p.contains("write to") ||
+        p.contains("create a file") || p.contains("save to") || p.contains("edit "))
 
     let wantsDir = !hasNotesIntent && (p.contains("directory") || p.contains("folder") || p.contains("list files") ||
                    p.contains("what files") || p.contains("what's in") || p.contains("ls ") ||
@@ -125,7 +162,7 @@ func routeTools(
                       (p.contains("find") && (p.contains("file") || p.contains("code") || p.contains("function") || p.contains("class"))))
 
     let wantsCommand = !hasNotesIntent && (p.contains("run ") || p.contains("execute") || p.contains("shell") ||
-                       p.contains("terminal") || p.contains("command") || words.contains("git") ||
+                       p.contains("terminal") || p.contains("command") ||
                        words.contains("pip") || words.contains("npm") || words.contains("brew") ||
                        words.contains("make") || words.contains("curl") || words.contains("python") ||
                        words.contains("swift") || words.contains("cargo") || words.contains("docker"))
@@ -158,9 +195,10 @@ func routeTools(
         p.contains("extract from") || hasURLInPrompt
     )
 
-    if wantsFile   { selected.append(ReadFileTool()); selected.append(WriteFileTool()) }
+    if wantsFile   { selected.append(ReadFileTool()); selected.append(WriteFileTool()); selected.append(EditFileTool()) }
     if wantsDir    { selected.append(ListDirectoryTool()) }
     if wantsSearch { selected.append(SearchFilesTool()); selected.append(SearchContentTool()) }
+    if wantsGit    { selected.append(GitTool()) }
     if wantsCommand { selected.append(RunCommandTool()) }
     if wantsPDF { selected.append(CreatePDFTool()) }
     if wantsWebSearch { selected.append(WebSearchTool()) }
@@ -318,6 +356,16 @@ if checkAppleTools {
     exit(0)
 }
 
+// Load config file; CLI flags take precedence over config values.
+let effectiveCWD = cwd ?? FileManager.default.currentDirectoryPath
+let fileConfig = AppConfig.load(workingDir: effectiveCWD)
+AppConfig.ensureConfigDir()
+if providerFlag == nil    { providerFlag    = fileConfig.provider }
+if modelFlag == nil       { modelFlag       = fileConfig.model }
+if baseURLFlag == nil     { baseURLFlag     = fileConfig.baseURL }
+if uiModeFlag == nil      { uiModeFlag      = fileConfig.uiMode }
+if systemInstructions == nil { systemInstructions = fileConfig.systemPrompt }
+
 let runtimeModelConfig: ModelConfig
 do {
     runtimeModelConfig = try ModelConfig.resolve(
@@ -340,6 +388,7 @@ if let cwd = cwd {
 
 let shouldBeInteractive = forceInteractive || promptArg == nil || promptArg?.isEmpty == true
 let initialUIMode = UIMode(rawValue: (uiModeFlag ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) ?? .classic
+let initialThemeName = fileConfig.theme.flatMap { TUITheme.named($0)?.name } ?? TUITheme.wow.name
 
 if shouldBeInteractive {
     var session: Session
@@ -365,14 +414,14 @@ if shouldBeInteractive {
             workingDir: workingDir,
             modelConfig: initialModelConfig,
             uiMode: initialUIMode,
-            activeThemeName: TUITheme.wow.name
+            activeThemeName: initialThemeName
         )
     } else {
         session = SessionManager.shared.createSession(
             workingDir: workingDir,
             modelConfig: initialModelConfig,
             uiMode: initialUIMode,
-            activeThemeName: TUITheme.wow.name
+            activeThemeName: initialThemeName
         )
     }
 
@@ -497,6 +546,13 @@ do {
         userPrompt: prompt,
         modelReply: content,
         timeoutSeconds: timeout
+    ) {
+        content = recovered
+    }
+
+    if let recovered = await resolveFilesystemRefusalFallback(
+        userPrompt: prompt,
+        modelReply: content
     ) {
         content = recovered
     }

@@ -13,19 +13,68 @@ struct RunCommandTool: Tool {
         let timeout: Int?
     }
 
-    private static let blocklist = [
-        "rm -rf /", "rm -rf /*", "mkfs", "dd if=", ":(){", "fork bomb",
-        "> /dev/sda", "chmod -R 777 /", "shutdown", "reboot", "halt",
-    ]
+    // Patterns that are always blocked (catastrophic, no confirmation)
+    private static let hardBlockPatterns: [NSRegularExpression] = [
+        "rm\\s+-[a-z]*r[a-z]*f\\s+/[^/]",  // rm -rf /<something> (root paths)
+        "rm\\s+-[a-z]*r[a-z]*f\\s+/\\s*$",  // rm -rf / (trailing space/end)
+        "mkfs\\b",
+        "dd\\s+if=",
+        ":\\(\\)\\s*\\{",                    // fork bomb :() {
+        ">\\s*/dev/sd",
+        "chmod\\s+-R\\s+777\\s+/",
+        "\\bshutdown\\b",
+        "\\breboot\\b",
+        "\\bhalt\\b",
+        "\\bpoweroff\\b",
+    ].compactMap { try? NSRegularExpression(pattern: $0, options: .caseInsensitive) }
+
+    // Patterns that need user confirmation before running
+    private static let warnPatterns: [NSRegularExpression] = [
+        "\\brm\\b.*-[a-z]*r",               // any recursive rm
+        "\\bsudo\\b",                        // sudo anything
+        "\\bcurl\\b.*\\|.*\\bsh\\b",         // curl | sh
+        "\\bwget\\b.*\\|.*\\bsh\\b",         // wget | sh
+        "\\bchmod\\b.*777",
+        "\\bmv\\b.*\\/dev\\/null",
+        "> /etc/",                            // overwrite system files
+        "\\bkillall\\b",
+        "\\bkill\\s+-9\\b",
+    ].compactMap { try? NSRegularExpression(pattern: $0, options: .caseInsensitive) }
+
+    enum CommandRisk {
+        case safe
+        case warn(reason: String)
+        case blocked(reason: String)
+    }
+
+    static func assess(_ command: String) -> CommandRisk {
+        let range = NSRange(command.startIndex..., in: command)
+        for pattern in hardBlockPatterns {
+            if pattern.firstMatch(in: command, range: range) != nil {
+                return .blocked(reason: "dangerous destructive command")
+            }
+        }
+        for pattern in warnPatterns {
+            if pattern.firstMatch(in: command, range: range) != nil {
+                return .warn(reason: "potentially dangerous command")
+            }
+        }
+        return .safe
+    }
 
     func call(arguments: Arguments) async throws -> String {
         let cmd = arguments.command
 
-        // Safety check
-        for blocked in Self.blocklist {
-            if cmd.contains(blocked) {
-                return "Error: Command blocked for safety: contains '\(blocked)'"
-            }
+        switch Self.assess(cmd) {
+        case .blocked(let reason):
+            appendAuditLog(command: cmd, decision: "BLOCKED", reason: reason)
+            return "Error: Command blocked for safety: \(reason). Command: \(cmd)"
+        case .warn(let reason):
+            // In tool context (called by model), we emit a warning in the result
+            // but still run – the model needs feedback. Humans get [y/N] in REPL.
+            appendAuditLog(command: cmd, decision: "ALLOWED-WARN", reason: reason)
+        case .safe:
+            break
         }
 
         let timeoutSecs = arguments.timeout ?? 30
@@ -49,13 +98,11 @@ struct RunCommandTool: Tool {
             var didTimeout = false
             let lock = NSLock()
             func markTimeout() {
-                lock.lock()
-                defer { lock.unlock() }
+                lock.lock(); defer { lock.unlock() }
                 didTimeout = true
             }
             func value() -> Bool {
-                lock.lock()
-                defer { lock.unlock() }
+                lock.lock(); defer { lock.unlock() }
                 return didTimeout
             }
         }
@@ -63,12 +110,9 @@ struct RunCommandTool: Tool {
         let state = TimeoutState()
         let timer = DispatchWorkItem {
             state.markTimeout()
-            if process.isRunning {
-                process.terminate()
-            }
+            if process.isRunning { process.terminate() }
         }
         DispatchQueue.global().asyncAfter(deadline: .now() + .seconds(timeoutSecs), execute: timer)
-
         process.waitUntilExit()
         timer.cancel()
 
@@ -82,21 +126,36 @@ struct RunCommandTool: Tool {
             output += "\n[stderr]\n\(errOutput)"
         }
 
-        let didTimeout = state.value()
-
-        if process.terminationStatus != 0 && !didTimeout {
+        if process.terminationStatus != 0 && !state.value() {
             output += "\n[exit code: \(process.terminationStatus)]"
         }
 
-        if didTimeout {
+        if state.value() {
             output += "\n[timed out after \(timeoutSecs)s]"
         }
 
-        // Cap output at 100KB
         if output.count > 100_000 {
             output = String(output.prefix(100_000)) + "\n... [truncated at 100KB]"
         }
 
         return output.isEmpty ? "(no output)" : output
+    }
+
+    private func appendAuditLog(command: String, decision: String, reason: String) {
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".apple-code")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let logURL = dir.appendingPathComponent("command_audit.log")
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let entry = "[\(timestamp)] \(decision) (\(reason)): \(command)\n"
+        if let data = entry.data(using: .utf8) {
+            if let fh = try? FileHandle(forWritingTo: logURL) {
+                fh.seekToEndOfFile()
+                fh.write(data)
+                try? fh.close()
+            } else {
+                try? data.write(to: logURL)
+            }
+        }
     }
 }

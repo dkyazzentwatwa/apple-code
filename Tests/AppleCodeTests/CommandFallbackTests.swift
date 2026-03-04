@@ -5,11 +5,13 @@ final class CommandFallbackTests: XCTestCase {
     func testDetectCommandIntentPrompt() {
         XCTAssertTrue(isCommandIntentPrompt("run ls -la"))
         XCTAssertTrue(isCommandIntentPrompt("please execute command pwd"))
+        XCTAssertTrue(isCommandIntentPrompt("git status"))
         XCTAssertFalse(isCommandIntentPrompt("write me a poem"))
     }
 
     func testLooksLikeCommandRefusal() {
         XCTAssertTrue(looksLikeCommandRefusal("I can't run shell command here."))
+        XCTAssertTrue(looksLikeCommandRefusal("I'm sorry, I can't access system tools like git status directly."))
         XCTAssertFalse(looksLikeCommandRefusal("I can run this command for you"))
     }
 
@@ -17,6 +19,8 @@ final class CommandFallbackTests: XCTestCase {
         XCTAssertEqual(extractShellCommand(from: "run command ls -la"), "ls -la")
         XCTAssertEqual(extractShellCommand(from: "execute `pwd`"), "pwd")
         XCTAssertEqual(extractShellCommand(from: "run \"echo hi\""), "echo hi")
+        XCTAssertEqual(extractShellCommand(from: "✶  apple-code ›   git status"), "git status")
+        XCTAssertEqual(extractShellCommand(from: "git status"), "git status")
         XCTAssertNil(extractShellCommand(from: "just chat"))
     }
 
@@ -29,5 +33,35 @@ final class CommandFallbackTests: XCTestCase {
         XCTAssertNotNil(result)
         XCTAssertTrue(result?.contains("Command output (`echo hello`)") == true)
         XCTAssertTrue(result?.contains("hello") == true)
+    }
+
+    func testResolveCommandRefusalFallbackRunsRawCommand() async {
+        let result = await resolveCommandRefusalFallback(
+            userPrompt: "git status",
+            modelReply: "I'm sorry, I can't access system tools like git status directly.",
+            timeoutSeconds: 5
+        )
+        XCTAssertNotNil(result)
+        XCTAssertTrue(result?.contains("Command output (`git status`)") == true)
+    }
+
+    func testResolveFilesystemRefusalFallbackReadsReadme() async {
+        let result = await resolveFilesystemRefusalFallback(
+            userPrompt: "read the file README.md",
+            modelReply: "null"
+        )
+        XCTAssertNotNil(result)
+        XCTAssertTrue(result?.contains("File content (`README.md`)") == true)
+        XCTAssertTrue(result?.contains("# apple-code") == true)
+    }
+
+    func testResolveFilesystemRefusalFallbackListsCurrentDirectory() async {
+        let result = await resolveFilesystemRefusalFallback(
+            userPrompt: "whats in this folder",
+            modelReply: "I can't access system tools directly."
+        )
+        XCTAssertNotNil(result)
+        XCTAssertTrue(result?.contains("Directory listing (`.`)") == true)
+        XCTAssertTrue(result?.contains("README.md") == true)
     }
 }
