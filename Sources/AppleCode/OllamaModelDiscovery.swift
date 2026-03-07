@@ -73,7 +73,7 @@ enum OllamaModelDiscovery {
     }
 
     private static func installedModelsFromAPI(baseURL: URL) async -> [String] {
-        let tagsURL = baseURL.appendingPathComponent("api").appendingPathComponent("tags")
+        let tagsURL = baseURL.appendingOllamaEndpoint("tags")
         var request = URLRequest(url: tagsURL)
         request.httpMethod = "GET"
         request.timeoutInterval = 8

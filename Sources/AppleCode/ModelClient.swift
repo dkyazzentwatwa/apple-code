@@ -77,7 +77,7 @@ func makeModelClient(
 
         let rawBaseURL: String = config.baseURL
             ?? env["OLLAMA_BASE_URL"]
-            ?? "http://127.0.0.1:11434"
+            ?? ModelConfig.defaultOllamaBaseURL
         guard let baseURL = URL(string: rawBaseURL) else {
             throw ModelClientFactoryError.invalidBaseURL
         }
@@ -356,7 +356,7 @@ private struct OllamaModelClient: ModelClient {
     }
 
     private func chatURL() -> URL {
-        baseURL.appendingPathComponent("api").appendingPathComponent("chat")
+        baseURL.appendingOllamaEndpoint("chat")
     }
 }
 

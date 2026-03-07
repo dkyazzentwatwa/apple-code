@@ -2,6 +2,11 @@
 
 All notable changes to apple-code are documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- **Ollama URL contract tests** — `ModelConfigTests` now assert native Ollama base URLs without an implicit `/v1` suffix, matching the runtime's `/api/chat` and `/api/tags` requests.
+
 ## [v0.2.0] — 2026-03-04
 
 ### Added

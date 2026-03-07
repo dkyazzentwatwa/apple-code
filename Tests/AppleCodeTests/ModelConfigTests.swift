@@ -25,7 +25,7 @@ final class ModelConfigTests: XCTestCase {
 
         XCTAssertEqual(config.provider, .ollama)
         XCTAssertEqual(config.model, "qwen3.5:4b")
-        XCTAssertEqual(config.baseURL, "http://127.0.0.1:11434/v1")
+        XCTAssertEqual(config.baseURL, ModelConfig.defaultOllamaBaseURL)
     }
 
     func testResolveReadsEnvironmentForOllama() throws {
@@ -41,7 +41,7 @@ final class ModelConfigTests: XCTestCase {
 
         XCTAssertEqual(config.provider, .ollama)
         XCTAssertEqual(config.model, "qwen2.5-coder:7b")
-        XCTAssertEqual(config.baseURL, "http://localhost:11435/v1")
+        XCTAssertEqual(config.baseURL, "http://localhost:11435")
     }
 
     func testResolveRejectsRemoteFlagsForApple() {
@@ -60,9 +60,9 @@ final class ModelConfigTests: XCTestCase {
         }
     }
 
-    func testNormalizeBaseURLAddsV1Path() throws {
+    func testNormalizeBaseURLPreservesNativeOllamaBasePath() throws {
         let url = try ModelConfig.normalizeBaseURL("http://127.0.0.1:11434")
-        XCTAssertEqual(url.absoluteString, "http://127.0.0.1:11434/v1")
+        XCTAssertEqual(url.absoluteString, ModelConfig.defaultOllamaBaseURL)
     }
 
     func testNormalizeBaseURLRejectsInvalidScheme() {
