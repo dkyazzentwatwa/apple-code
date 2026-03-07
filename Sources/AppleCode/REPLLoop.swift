@@ -92,6 +92,38 @@ private actor StreamEventBuffer {
     }
 }
 
+enum ChangeDirectoryResult: Equatable {
+    case success(String)
+    case missing(String)
+    case notDirectory(String)
+    case failed(String)
+}
+
+@discardableResult
+func changeWorkingDirectory(
+    to path: String,
+    session: inout Session,
+    fileManager: FileManager = .default
+) -> ChangeDirectoryResult {
+    let expandedPath = (path as NSString).expandingTildeInPath
+    var isDirectory: ObjCBool = false
+
+    guard fileManager.fileExists(atPath: expandedPath, isDirectory: &isDirectory) else {
+        return .missing(expandedPath)
+    }
+
+    guard isDirectory.boolValue else {
+        return .notDirectory(expandedPath)
+    }
+
+    guard fileManager.changeCurrentDirectoryPath(expandedPath) else {
+        return .failed(expandedPath)
+    }
+
+    session.workingDir = expandedPath
+    return .success(expandedPath)
+}
+
 func runInteractiveREPL(
     session: inout Session,
     initialModelConfig: ModelConfig,
@@ -702,10 +734,8 @@ func runInteractiveREPL(
             continue
 
         case .changeDirectory(let path):
-            let expandedPath = (path as NSString).expandingTildeInPath
-            if FileManager.default.fileExists(atPath: expandedPath) {
-                FileManager.default.changeCurrentDirectoryPath(expandedPath)
-                session.workingDir = expandedPath
+            switch changeWorkingDirectory(to: path, session: &session) {
+            case .success(let expandedPath):
                 if useAdvancedUI, let renderer, var state = uiState, let viewport {
                     viewport.append(role: "system", content: "Changed directory to: \(expandedPath)")
                     renderAdvancedShell(
@@ -719,7 +749,7 @@ func runInteractiveREPL(
                 } else {
                     printSuccess("Changed directory to: \(expandedPath)")
                 }
-            } else {
+            case .missing(let expandedPath):
                 if useAdvancedUI, let renderer, var state = uiState, let viewport {
                     viewport.append(role: "error", content: "Directory not found: \(expandedPath)")
                     renderAdvancedShell(
@@ -732,6 +762,34 @@ func runInteractiveREPL(
                     uiState = state
                 } else {
                     printError("Directory not found: \(expandedPath)")
+                }
+            case .notDirectory(let expandedPath):
+                if useAdvancedUI, let renderer, var state = uiState, let viewport {
+                    viewport.append(role: "error", content: "Not a directory: \(expandedPath)")
+                    renderAdvancedShell(
+                        renderer: renderer,
+                        state: &state,
+                        viewport: viewport,
+                        cwd: session.workingDir,
+                        mode: activeModelConfig.modeLabel
+                    )
+                    uiState = state
+                } else {
+                    printError("Not a directory: \(expandedPath)")
+                }
+            case .failed(let expandedPath):
+                if useAdvancedUI, let renderer, var state = uiState, let viewport {
+                    viewport.append(role: "error", content: "Failed to change directory: \(expandedPath)")
+                    renderAdvancedShell(
+                        renderer: renderer,
+                        state: &state,
+                        viewport: viewport,
+                        cwd: session.workingDir,
+                        mode: activeModelConfig.modeLabel
+                    )
+                    uiState = state
+                } else {
+                    printError("Failed to change directory: \(expandedPath)")
                 }
             }
             continue
