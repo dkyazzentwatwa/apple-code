@@ -25,7 +25,7 @@ final class ModelConfigTests: XCTestCase {
 
         XCTAssertEqual(config.provider, .ollama)
         XCTAssertEqual(config.model, "qwen3.5:4b")
-        XCTAssertEqual(config.baseURL, "http://127.0.0.1:11434/v1")
+        XCTAssertEqual(config.baseURL, "http://127.0.0.1:11434")
     }
 
     func testResolveReadsEnvironmentForOllama() throws {
@@ -41,7 +41,7 @@ final class ModelConfigTests: XCTestCase {
 
         XCTAssertEqual(config.provider, .ollama)
         XCTAssertEqual(config.model, "qwen2.5-coder:7b")
-        XCTAssertEqual(config.baseURL, "http://localhost:11435/v1")
+        XCTAssertEqual(config.baseURL, "http://localhost:11435")
     }
 
     func testResolveRejectsRemoteFlagsForApple() {
@@ -60,9 +60,34 @@ final class ModelConfigTests: XCTestCase {
         }
     }
 
-    func testNormalizeBaseURLAddsV1Path() throws {
+    func testNormalizeBaseURLPreservesHostRoot() throws {
         let url = try ModelConfig.normalizeBaseURL("http://127.0.0.1:11434")
-        XCTAssertEqual(url.absoluteString, "http://127.0.0.1:11434/v1")
+        XCTAssertEqual(url.absoluteString, "http://127.0.0.1:11434")
+    }
+
+    func testNormalizeBaseURLRemovesTrailingSlash() throws {
+        let url = try ModelConfig.normalizeBaseURL("http://127.0.0.1:11434/")
+        XCTAssertEqual(url.absoluteString, "http://127.0.0.1:11434")
+    }
+
+    func testNormalizeBaseURLRejectsAPIRootPath() {
+        XCTAssertThrowsError(try ModelConfig.normalizeBaseURL("http://localhost:11434/api")) { error in
+            guard case ModelConfigError.invalidBaseURL(let value) = error else {
+                XCTFail("Expected invalidBaseURL, got: \(error)")
+                return
+            }
+            XCTAssertEqual(value, "http://localhost:11434/api")
+        }
+    }
+
+    func testNormalizeBaseURLRejectsV1Path() {
+        XCTAssertThrowsError(try ModelConfig.normalizeBaseURL("http://localhost:11434/v1/")) { error in
+            guard case ModelConfigError.invalidBaseURL(let value) = error else {
+                XCTFail("Expected invalidBaseURL, got: \(error)")
+                return
+            }
+            XCTAssertEqual(value, "http://localhost:11434/v1/")
+        }
     }
 
     func testNormalizeBaseURLRejectsInvalidScheme() {
@@ -98,6 +123,9 @@ final class ModelConfigTests: XCTestCase {
         )
         XCTAssertTrue(
             ModelConfigError.missingModel.localizedDescription.contains("requires a model")
+        )
+        XCTAssertTrue(
+            ModelConfigError.invalidBaseURL("http://localhost:11434/api").localizedDescription.contains("server root only")
         )
     }
 }

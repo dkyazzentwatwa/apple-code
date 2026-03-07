@@ -97,7 +97,8 @@ struct ModelConfig: Codable, Sendable {
     }
 
     static func normalizeBaseURL(_ raw: String) throws -> URL {
-        guard var components = URLComponents(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)),
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var components = URLComponents(string: trimmed),
               let scheme = components.scheme?.lowercased(),
               (scheme == "http" || scheme == "https") else {
             throw ModelConfigError.invalidBaseURL(raw)
@@ -105,10 +106,9 @@ struct ModelConfig: Codable, Sendable {
 
         let cleanedPath = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         if !cleanedPath.isEmpty {
-            components.path = "/" + cleanedPath
-        } else {
-            components.path = ""
+            throw ModelConfigError.invalidBaseURL(raw)
         }
+        components.path = ""
 
         guard let url = components.url else {
             throw ModelConfigError.invalidBaseURL(raw)
@@ -131,7 +131,7 @@ enum ModelConfigError: LocalizedError {
             }
             return "Invalid provider '\(value)'. Use 'apple' or 'ollama'."
         case .invalidBaseURL(let value):
-            return "Invalid base URL '\(value)'. Use a valid http or https URL."
+            return "Invalid base URL '\(value)'. Use the Ollama server root only, for example http://127.0.0.1:11434."
         case .missingModel:
             return "Ollama provider requires a model. Set --model or OLLAMA_MODEL."
         case .appleDoesNotUseRemoteModelFlags:

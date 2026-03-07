@@ -78,8 +78,11 @@ func makeModelClient(
         let rawBaseURL: String = config.baseURL
             ?? env["OLLAMA_BASE_URL"]
             ?? "http://127.0.0.1:11434"
-        guard let baseURL = URL(string: rawBaseURL) else {
-            throw ModelClientFactoryError.invalidBaseURL
+        let baseURL: URL
+        do {
+            baseURL = try ModelConfig.normalizeBaseURL(rawBaseURL)
+        } catch {
+            throw ModelClientFactoryError.invalidBaseURL(rawBaseURL)
         }
         return OllamaModelClient(config: config, model: model, baseURL: baseURL)
     }
@@ -88,7 +91,7 @@ func makeModelClient(
 enum ModelClientFactoryError: LocalizedError {
     case appleUnavailable
     case missingModel
-    case invalidBaseURL
+    case invalidBaseURL(String)
     case modelNotInstalled(model: String)
     case ollamaUnavailable(String)
 
@@ -98,8 +101,8 @@ enum ModelClientFactoryError: LocalizedError {
             return "Apple Foundation Models not available. Requires macOS 26+ on Apple Silicon."
         case .missingModel:
             return "Ollama requires a model. Select one in /settings or set --model / OLLAMA_MODEL."
-        case .invalidBaseURL:
-            return "Ollama base URL is invalid."
+        case .invalidBaseURL(let value):
+            return "Invalid Ollama base URL '\(value)'. Use the server root only, for example http://127.0.0.1:11434."
         case .modelNotInstalled(let model):
             return "Model '\(model)' is not installed locally. Run: ollama pull \(model)"
         case .ollamaUnavailable(let detail):
