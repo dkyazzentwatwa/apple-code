@@ -34,6 +34,7 @@ struct ModelConfig: Codable, Sendable {
     let baseURL: String?
 
     static let appleDefault = ModelConfig(provider: .apple, model: nil, baseURL: nil)
+    static let defaultOllamaBaseURL = "http://127.0.0.1:11434"
 
     var modeLabel: String {
         switch provider {
@@ -78,7 +79,7 @@ struct ModelConfig: Codable, Sendable {
 
             let rawBaseURL = nonEmpty(trimmedBaseURL)
                 ?? nonEmpty(env["OLLAMA_BASE_URL"])
-                ?? "http://127.0.0.1:11434"
+                ?? defaultOllamaBaseURL
             let normalizedBaseURL = try normalizeBaseURL(rawBaseURL)
 
             return ModelConfig(
@@ -114,6 +115,12 @@ struct ModelConfig: Codable, Sendable {
             throw ModelConfigError.invalidBaseURL(raw)
         }
         return url
+    }
+}
+
+extension URL {
+    func appendingOllamaEndpoint(_ endpoint: String) -> URL {
+        appendingPathComponent("api").appendingPathComponent(endpoint)
     }
 }
 
