@@ -218,6 +218,15 @@ swift test
 ./scripts/coverage.sh
 ```
 
+## CI Matrix
+
+CI now has two explicit validation lanes:
+
+- `Portable Core Validation` always runs and builds/tests a temporary FoundationModels-free subset of shared code.
+- `Full FoundationModels Validation` runs the full `swift build` plus `./scripts/coverage.sh` only when the runner can import `FoundationModels`.
+
+This means a green run always includes portable compile-and-test coverage for shared logic, while Apple Foundation Models integration remains a separate, clearly labeled platform-specific check.
+
 `./scripts/coverage.sh` enforces an 80% line-coverage gate on the unit-testable core modules and also prints full-project coverage for visibility.
 
 ## License
