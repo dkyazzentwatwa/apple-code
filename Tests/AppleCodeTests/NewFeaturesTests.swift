@@ -377,3 +377,29 @@ final class ProjectContextFileTests: XCTestCase {
         XCTAssertTrue(result!.contains("truncated"))
     }
 }
+
+// MARK: - routeTools WebFetch Tests
+
+final class RouteToolsWebFetchTests: XCTestCase {
+    func testPastedURLDoesNotEnableWebFetch() {
+        let tools = routeTools(
+            for: "Here is the link I am referencing: https://example.com/docs",
+            includeAppleTools: true,
+            includeWebTools: true,
+            includeBrowserTools: true
+        )
+
+        XCTAssertFalse(tools.contains { $0.name == "webFetch" })
+    }
+
+    func testExplicitPageFetchRequestEnablesWebFetch() {
+        let tools = routeTools(
+            for: "Please summarize this page: https://example.com/docs",
+            includeAppleTools: true,
+            includeWebTools: true,
+            includeBrowserTools: true
+        )
+
+        XCTAssertTrue(tools.contains { $0.name == "webFetch" })
+    }
+}
