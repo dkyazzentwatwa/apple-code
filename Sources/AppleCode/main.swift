@@ -142,11 +142,17 @@ func routeTools(
         p.contains("repo status")
     )
 
+    let wantsMutatingFile = !hasNotesIntent && !wantsGit && (
+        p.contains("write to") || p.contains("create a file") || p.contains("save to") ||
+        p.contains("edit ") || p.contains("modify ") || p.contains("update ") ||
+        p.contains("append to") || p.contains("replace in")
+    )
+
     let wantsFile = !hasNotesIntent && !wantsGit && (
         p.contains("file") || p.contains("readme") || p.contains("package.swift") ||
         p.contains("read the") || p.contains("read this") || p.contains("show me the") ||
-        p.contains("open ") || p.contains("contents of") || p.contains("write to") ||
-        p.contains("create a file") || p.contains("save to") || p.contains("edit "))
+        p.contains("open ") || p.contains("contents of") || wantsMutatingFile
+    )
 
     let wantsDir = !hasNotesIntent && (p.contains("directory") || p.contains("folder") || p.contains("list files") ||
                    p.contains("what files") || p.contains("what's in") || p.contains("ls ") ||
@@ -195,7 +201,11 @@ func routeTools(
         p.contains("extract from") || hasURLInPrompt
     )
 
-    if wantsFile   { selected.append(ReadFileTool()); selected.append(WriteFileTool()); selected.append(EditFileTool()) }
+    if wantsFile   { selected.append(ReadFileTool()) }
+    if wantsMutatingFile {
+        selected.append(WriteFileTool())
+        selected.append(EditFileTool())
+    }
     if wantsDir    { selected.append(ListDirectoryTool()) }
     if wantsSearch { selected.append(SearchFilesTool()); selected.append(SearchContentTool()) }
     if wantsGit    { selected.append(GitTool()) }
