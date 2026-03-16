@@ -126,6 +126,12 @@ apple-code [options] ["prompt"]
 --run-notes-action a    Run notes tool directly and exit
 --run-notes-query q     Query/title for --run-notes-action
 --run-notes-body b      Body text for --run-notes-action
+--security-profile p    Security profile: secure | balanced | compatibility
+--allow-path /path      Additional allowed filesystem root (repeatable)
+--allow-host host       Allowed web host/domain (repeatable)
+--allow-private-network Allow localhost/private network URLs
+--dangerous-without-confirm Allow dangerous mutating actions without extra gate
+--allow-fallback-execution  Allow automatic refusal fallback tool execution
 --verbose               Show full output (disable summary mode)
 -i, --interactive       Force interactive mode
 --resume <session-id>   Resume a session

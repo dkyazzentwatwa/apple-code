@@ -8,6 +8,12 @@ struct AppConfig {
     var theme: String?
     var uiMode: String?
     var systemPrompt: String?
+    var securityProfile: String?
+    var allowPaths: [String]?
+    var allowHosts: [String]?
+    var allowPrivateNetwork: Bool?
+    var dangerousWithoutConfirm: Bool?
+    var allowFallbackExecution: Bool?
 
     static let empty = AppConfig()
 
@@ -43,6 +49,12 @@ struct AppConfig {
         if let v = other.theme       { theme       = v }
         if let v = other.uiMode      { uiMode      = v }
         if let v = other.systemPrompt { systemPrompt = v }
+        if let v = other.securityProfile { securityProfile = v }
+        if let v = other.allowPaths  { allowPaths  = v }
+        if let v = other.allowHosts  { allowHosts  = v }
+        if let v = other.allowPrivateNetwork { allowPrivateNetwork = v }
+        if let v = other.dangerousWithoutConfirm { dangerousWithoutConfirm = v }
+        if let v = other.allowFallbackExecution { allowFallbackExecution = v }
     }
 
     /// Parse a key=value config file. Lines starting with # are comments.
@@ -69,10 +81,40 @@ struct AppConfig {
             case "theme":            config.theme        = value
             case "ui", "ui_mode":   config.uiMode       = value
             case "system_prompt":    config.systemPrompt = value
+            case "security_profile": config.securityProfile = value
+            case "allow_paths":
+                let values = splitCSV(value)
+                if !values.isEmpty { config.allowPaths = values }
+            case "allow_hosts":
+                let values = splitCSV(value)
+                if !values.isEmpty { config.allowHosts = values }
+            case "allow_private_network":
+                config.allowPrivateNetwork = parseBool(value)
+            case "dangerous_without_confirm", "dangerous_without_confirmation":
+                config.dangerousWithoutConfirm = parseBool(value)
+            case "allow_fallback_execution", "automatic_fallback_execution":
+                config.allowFallbackExecution = parseBool(value)
             default: break
             }
         }
         return config
+    }
+
+    private static func splitCSV(_ raw: String) -> [String] {
+        raw.split(separator: ",")
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private static func parseBool(_ raw: String) -> Bool? {
+        switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "true", "1", "yes", "y", "on":
+            return true
+        case "false", "0", "no", "n", "off":
+            return false
+        default:
+            return nil
+        }
     }
 
     /// Create the global config directory if it doesn't exist.

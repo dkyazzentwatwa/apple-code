@@ -16,7 +16,12 @@ struct EditFileTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
-        let url = URL(fileURLWithPath: arguments.path)
+        let check = ToolSafety.shared.checkPath(arguments.path, forWrite: true)
+        guard check.allowed else {
+            return "Error: Access denied for path '\(arguments.path)' (\(check.reason ?? "blocked"))."
+        }
+
+        let url = URL(fileURLWithPath: check.resolvedPath)
         guard FileManager.default.fileExists(atPath: url.path) else {
             return "Error: File not found: \(arguments.path)"
         }
@@ -30,10 +35,10 @@ struct EditFileTool: Tool {
 
         let occurrences = content.ranges(of: arguments.oldString).count
         if occurrences == 0 {
-            return "Error: oldString not found in \(arguments.path)"
+            return "Error: oldString not found in \(check.resolvedPath)"
         }
         if occurrences > 1 {
-            return "Error: oldString appears \(occurrences) times in \(arguments.path). Provide a more specific string that matches exactly once."
+            return "Error: oldString appears \(occurrences) times in \(check.resolvedPath). Provide a more specific string that matches exactly once."
         }
 
         let newContent = content.replacingOccurrences(of: arguments.oldString, with: arguments.newString)
@@ -50,7 +55,7 @@ struct EditFileTool: Tool {
         let newLines = arguments.newString.components(separatedBy: "\n").count
         let lineDelta = newLines - oldLines
         let deltaStr = lineDelta == 0 ? "" : (lineDelta > 0 ? " (+\(lineDelta) lines)" : " (\(lineDelta) lines)")
-        return "Replaced 1 occurrence at line \(lineNumber) in \(arguments.path)\(deltaStr)"
+        return "Replaced 1 occurrence at line \(lineNumber) in \(check.resolvedPath)\(deltaStr)"
     }
 
     private func lineNumberOf(string: String, in content: String) -> Int {

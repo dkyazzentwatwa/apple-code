@@ -14,6 +14,7 @@ struct GitTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
+        let policy = ToolSafety.shared.currentPolicy()
         switch arguments.action.trimmingCharacters(in: .whitespaces).lowercased() {
         case "status":
             return await runGit(["status", "--short", "--branch"])
@@ -21,7 +22,13 @@ struct GitTool: Tool {
         case "diff":
             let path = arguments.arg?.trimmingCharacters(in: .whitespacesAndNewlines)
             var gitArgs = ["diff", "--stat", "-p", "--no-color"]
-            if let path, !path.isEmpty { gitArgs.append(path) }
+            if let path, !path.isEmpty {
+                let pathCheck = ToolSafety.shared.checkPath(path, forWrite: false)
+                guard pathCheck.allowed else {
+                    return "Error: git diff path denied by security policy (\(pathCheck.reason ?? "blocked"))."
+                }
+                gitArgs.append(pathCheck.resolvedPath)
+            }
             return capOutput(await runGit(gitArgs), maxChars: 8000)
 
         case "log":
@@ -31,6 +38,9 @@ struct GitTool: Tool {
             ])
 
         case "commit":
+            guard policy.allowDangerousWithoutConfirmation else {
+                return "Error: git commit is blocked by security profile '\(policy.profile.rawValue)'. Use --dangerous-without-confirm to allow."
+            }
             guard let message = arguments.arg?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !message.isEmpty else {
                 return "Error: commit requires a message in arg"
@@ -42,6 +52,9 @@ struct GitTool: Tool {
             return await runGit(["commit", "-m", message])
 
         case "stash":
+            guard policy.allowDangerousWithoutConfirmation else {
+                return "Error: git stash push/pop is blocked by security profile '\(policy.profile.rawValue)'. Use --dangerous-without-confirm to allow."
+            }
             let op = arguments.arg?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "list"
             switch op {
             case "push":   return await runGit(["stash", "push"])
@@ -57,7 +70,11 @@ struct GitTool: Tool {
                   !path.isEmpty else {
                 return "Error: blame requires a file path in arg"
             }
-            return capOutput(await runGit(["blame", "--no-progress", path]), maxChars: 6000)
+            let pathCheck = ToolSafety.shared.checkPath(path, forWrite: false)
+            guard pathCheck.allowed else {
+                return "Error: git blame path denied by security policy (\(pathCheck.reason ?? "blocked"))."
+            }
+            return capOutput(await runGit(["blame", "--no-progress", pathCheck.resolvedPath]), maxChars: 6000)
 
         default:
             return "Error: Unknown git action '\(arguments.action)'. Use status|diff|log|commit|stash|branch_list|blame"

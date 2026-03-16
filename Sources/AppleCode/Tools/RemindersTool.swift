@@ -16,6 +16,7 @@ struct RemindersTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
+        let policy = ToolSafety.shared.currentPolicy()
         switch arguments.action {
         case "list_lists":
             return listLists()
@@ -27,11 +28,17 @@ struct RemindersTool: Tool {
             }
             return search(query: query, listName: arguments.list)
         case "create":
+            guard policy.allowDangerousWithoutConfirmation else {
+                return "Error: Reminders create is blocked by security profile '\(policy.profile.rawValue)'. Use --dangerous-without-confirm to allow."
+            }
             guard let query = arguments.query else {
                 return "Error: 'query' (reminder name) is required for create"
             }
             return create(name: query, listName: arguments.list ?? "Reminders", notes: nil, dueDate: nil)
         case "complete":
+            guard policy.allowDangerousWithoutConfirmation else {
+                return "Error: Reminders complete is blocked by security profile '\(policy.profile.rawValue)'. Use --dangerous-without-confirm to allow."
+            }
             guard let query = arguments.query, let list = arguments.list else {
                 return "Error: 'query' (reminder ID) and 'list' are required for complete"
             }

@@ -16,6 +16,7 @@ struct CalendarTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
+        let policy = ToolSafety.shared.currentPolicy()
         switch arguments.action {
         case "list_calendars":
             return listCalendars()
@@ -27,6 +28,9 @@ struct CalendarTool: Tool {
             }
             return search(query: query, calendar: nil)
         case "create":
+            guard policy.allowDangerousWithoutConfirmation else {
+                return "Error: Calendar create is blocked by security profile '\(policy.profile.rawValue)'. Use --dangerous-without-confirm to allow."
+            }
             guard let query = arguments.query, let startDate = arguments.startDate else {
                 return "Error: 'query' (title) and 'startDate' are required for create"
             }

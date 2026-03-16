@@ -2,6 +2,31 @@ import XCTest
 @testable import apple_code
 
 final class CommandFallbackTests: XCTestCase {
+    private var previousPolicy: ToolSafetyPolicy?
+
+    override func setUp() {
+        super.setUp()
+        previousPolicy = ToolSafety.shared.currentPolicy()
+        ToolSafety.shared.configure(
+            ToolSafetyPolicy.make(
+                profile: .compatibility,
+                workingDirectory: FileManager.default.currentDirectoryPath,
+                additionalAllowedRoots: [FileManager.default.temporaryDirectory.path],
+                allowedHosts: [],
+                allowPrivateNetwork: true,
+                allowDangerousWithoutConfirmation: true,
+                allowAutomaticFallbackExecution: true
+            )
+        )
+    }
+
+    override func tearDown() {
+        if let previousPolicy {
+            ToolSafety.shared.configure(previousPolicy)
+        }
+        super.tearDown()
+    }
+
     func testDetectCommandIntentPrompt() {
         XCTAssertTrue(isCommandIntentPrompt("run ls -la"))
         XCTAssertTrue(isCommandIntentPrompt("please execute command pwd"))

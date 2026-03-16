@@ -14,17 +14,22 @@ struct WriteFileTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
-        let url = URL(fileURLWithPath: arguments.path)
+        let check = ToolSafety.shared.checkPath(arguments.path, forWrite: true)
+        guard check.allowed else {
+            return "Error: Access denied for path '\(arguments.path)' (\(check.reason ?? "blocked"))."
+        }
+
+        let url = URL(fileURLWithPath: check.resolvedPath)
         let dir = url.deletingLastPathComponent()
         let alreadyExists = FileManager.default.fileExists(atPath: url.path)
         if alreadyExists {
-            appendAuditLog(path: arguments.path, action: "OVERWRITE")
+            appendAuditLog(path: check.resolvedPath, action: "OVERWRITE")
         }
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             try arguments.content.write(to: url, atomically: true, encoding: .utf8)
             let notice = alreadyExists ? " (overwrote existing file)" : ""
-            return "Successfully wrote \(arguments.content.count) characters to \(arguments.path)\(notice)"
+            return "Successfully wrote \(arguments.content.count) characters to \(check.resolvedPath)\(notice)"
         } catch {
             return "Error writing file: \(error.localizedDescription)"
         }

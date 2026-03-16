@@ -5,6 +5,31 @@ import Foundation
 // MARK: - EditFileTool Tests
 
 final class EditFileToolTests: XCTestCase {
+    private var previousPolicy: ToolSafetyPolicy?
+
+    override func setUp() {
+        super.setUp()
+        previousPolicy = ToolSafety.shared.currentPolicy()
+        ToolSafety.shared.configure(
+            ToolSafetyPolicy.make(
+                profile: .compatibility,
+                workingDirectory: FileManager.default.currentDirectoryPath,
+                additionalAllowedRoots: [FileManager.default.temporaryDirectory.path],
+                allowedHosts: [],
+                allowPrivateNetwork: true,
+                allowDangerousWithoutConfirmation: true,
+                allowAutomaticFallbackExecution: true
+            )
+        )
+    }
+
+    override func tearDown() {
+        if let previousPolicy {
+            ToolSafety.shared.configure(previousPolicy)
+        }
+        super.tearDown()
+    }
+
     private func tempDir() throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("apple-code-edit-\(UUID().uuidString)", isDirectory: true)
@@ -162,6 +187,28 @@ final class AppConfigTests: XCTestCase {
         // We can't easily override the home dir in tests, but we can test parse directly
         let config = AppConfig.parse(filePath: projectConfig)
         XCTAssertEqual(config?.theme, "ocean")
+    }
+
+    func testParseSecuritySettings() throws {
+        let dir = try tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let configPath = dir.appendingPathComponent("config").path
+        try """
+        security_profile = secure
+        allow_paths = /tmp,/Users/me/project
+        allow_hosts = example.com,api.example.com
+        allow_private_network = false
+        dangerous_without_confirm = true
+        allow_fallback_execution = false
+        """.write(toFile: configPath, atomically: true, encoding: .utf8)
+
+        let config = AppConfig.parse(filePath: configPath)
+        XCTAssertEqual(config?.securityProfile, "secure")
+        XCTAssertEqual(config?.allowPaths ?? [], ["/tmp", "/Users/me/project"])
+        XCTAssertEqual(config?.allowHosts ?? [], ["example.com", "api.example.com"])
+        XCTAssertEqual(config?.allowPrivateNetwork, false)
+        XCTAssertEqual(config?.dangerousWithoutConfirm, true)
+        XCTAssertEqual(config?.allowFallbackExecution, false)
     }
 }
 

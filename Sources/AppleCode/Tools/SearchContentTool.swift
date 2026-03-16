@@ -17,7 +17,11 @@ struct SearchContentTool: Tool {
 
     func call(arguments: Arguments) async throws -> String {
         let searchPath = arguments.path ?? "."
-        let url = URL(fileURLWithPath: searchPath)
+        let check = ToolSafety.shared.checkPath(searchPath, forWrite: false)
+        guard check.allowed else {
+            return "Error: Access denied for path '\(searchPath)' (\(check.reason ?? "blocked"))."
+        }
+        let url = URL(fileURLWithPath: check.resolvedPath)
         let fm = FileManager.default
         let query = arguments.pattern.lowercased()
         let fileFilter = arguments.filePattern

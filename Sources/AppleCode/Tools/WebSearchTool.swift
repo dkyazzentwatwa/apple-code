@@ -59,6 +59,10 @@ struct WebSearchTool: Tool {
               let url = URL(string: "https://www.bing.com/search?q=\(encoded)&count=\(limit)&setlang=en-US") else {
             return "Error: Failed to build search URL."
         }
+        let bingCheck = ToolSafety.shared.checkURL(url)
+        guard bingCheck.allowed else {
+            return "Error: Search URL blocked by security policy (\(bingCheck.reason ?? "blocked"))."
+        }
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -123,6 +127,8 @@ struct WebSearchTool: Tool {
             URLQueryItem(name: "search_lang", value: "en"),
         ]
         guard let url = components?.url else { return nil }
+        let urlCheck = ToolSafety.shared.checkURL(url)
+        guard urlCheck.allowed else { return nil }
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -169,6 +175,8 @@ struct WebSearchTool: Tool {
               let url = URL(string: "https://r.jina.ai/http://search.brave.com/search?q=\(encoded)&source=web") else {
             return nil
         }
+        let urlCheck = ToolSafety.shared.checkURL(url)
+        guard urlCheck.allowed else { return nil }
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -414,6 +422,8 @@ struct WebSearchTool: Tool {
 
         for rawURL in candidateURLs {
             guard let url = URL(string: rawURL) else { continue }
+            let urlCheck = ToolSafety.shared.checkURL(url)
+            guard urlCheck.allowed else { continue }
             var request = URLRequest(url: url)
             request.httpMethod = "GET"
             request.timeoutInterval = 20

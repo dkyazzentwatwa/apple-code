@@ -18,7 +18,12 @@ struct CreatePDFTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
-        let outputURL = URL(fileURLWithPath: arguments.path)
+        let check = ToolSafety.shared.checkPath(arguments.path, forWrite: true)
+        guard check.allowed else {
+            return "Error: Access denied for path '\(arguments.path)' (\(check.reason ?? "blocked"))."
+        }
+
+        let outputURL = URL(fileURLWithPath: check.resolvedPath)
         let directory = outputURL.deletingLastPathComponent()
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -88,6 +93,6 @@ struct CreatePDFTool: Tool {
         let truncatedNote = currentRange.location < mutable.length
             ? " (truncated at \(maxPages) pages)"
             : ""
-        return "Created PDF at \(arguments.path) (\(pageCount) page(s))\(truncatedNote)"
+        return "Created PDF at \(check.resolvedPath) (\(pageCount) page(s))\(truncatedNote)"
     }
 }

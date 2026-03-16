@@ -20,6 +20,10 @@ struct WebFetchTool: Tool {
               scheme == "http" || scheme == "https" else {
             return "Error: URL must be valid and use http or https."
         }
+        let urlCheck = ToolSafety.shared.checkURL(url)
+        guard urlCheck.allowed else {
+            return "Error: URL blocked by security policy (\(urlCheck.reason ?? "blocked"))."
+        }
 
         let maxChars = max(1000, min(arguments.maxChars ?? 12_000, 30_000))
 
@@ -102,6 +106,8 @@ struct WebFetchTool: Tool {
     private func fetchSubstackArchiveSnippet(baseURL: URL, maxChars: Int) async throws -> String? {
         guard let host = baseURL.host else { return nil }
         guard let archiveURL = URL(string: "https://\(host)/archive") else { return nil }
+        let archiveCheck = ToolSafety.shared.checkURL(archiveURL)
+        guard archiveCheck.allowed else { return nil }
 
         var request = URLRequest(url: archiveURL)
         request.httpMethod = "GET"

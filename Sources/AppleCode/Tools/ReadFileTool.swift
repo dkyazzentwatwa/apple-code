@@ -12,7 +12,12 @@ struct ReadFileTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
-        let url = URL(fileURLWithPath: arguments.path)
+        let check = ToolSafety.shared.checkPath(arguments.path, forWrite: false)
+        guard check.allowed else {
+            return "Error: Access denied for path '\(arguments.path)' (\(check.reason ?? "blocked"))."
+        }
+
+        let url = URL(fileURLWithPath: check.resolvedPath)
         guard FileManager.default.fileExists(atPath: url.path) else {
             return "Error: File not found: \(arguments.path)"
         }

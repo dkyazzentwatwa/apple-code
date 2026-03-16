@@ -35,6 +35,7 @@ struct AgentBrowserTool: Tool {
         guard Self.allowedActions.contains(action) else {
             return "Error: Unsupported action '\(arguments.action)'. Allowed: \(Self.allowedActions.sorted().joined(separator: ", "))"
         }
+        let policy = ToolSafety.shared.currentPolicy()
 
         let timeoutSeconds = max(1, min(arguments.timeoutSeconds ?? 30, 120))
         let sessionName = normalizedSessionName(arguments.session)
@@ -55,18 +56,28 @@ struct AgentBrowserTool: Tool {
                   scheme == "http" || scheme == "https" else {
                 return "Error: URL must use http or https scheme"
             }
+            let check = ToolSafety.shared.checkURL(parsed)
+            guard check.allowed else {
+                return "Error: URL blocked by security policy (\(check.reason ?? "blocked"))."
+            }
             commandArgs += ["open", url]
 
         case "snapshot":
             commandArgs += ["snapshot", "-i"]
 
         case "click":
+            guard policy.allowDangerousWithoutConfirmation else {
+                return "Error: Browser click is blocked by security profile '\(policy.profile.rawValue)'. Use --dangerous-without-confirm to allow."
+            }
             guard let selector = nonEmpty(arguments.selector) else {
                 return "Error: 'selector' is required for action 'click'"
             }
             commandArgs += ["click", selector]
 
         case "fill":
+            guard policy.allowDangerousWithoutConfirmation else {
+                return "Error: Browser fill is blocked by security profile '\(policy.profile.rawValue)'. Use --dangerous-without-confirm to allow."
+            }
             guard let selector = nonEmpty(arguments.selector) else {
                 return "Error: 'selector' is required for action 'fill'"
             }
@@ -76,6 +87,9 @@ struct AgentBrowserTool: Tool {
             commandArgs += ["fill", selector, text]
 
         case "type":
+            guard policy.allowDangerousWithoutConfirmation else {
+                return "Error: Browser type is blocked by security profile '\(policy.profile.rawValue)'. Use --dangerous-without-confirm to allow."
+            }
             guard let selector = nonEmpty(arguments.selector) else {
                 return "Error: 'selector' is required for action 'type'"
             }
@@ -85,6 +99,9 @@ struct AgentBrowserTool: Tool {
             commandArgs += ["type", selector, text]
 
         case "press":
+            guard policy.allowDangerousWithoutConfirmation else {
+                return "Error: Browser keypress is blocked by security profile '\(policy.profile.rawValue)'. Use --dangerous-without-confirm to allow."
+            }
             guard let key = nonEmpty(arguments.key) else {
                 return "Error: 'key' is required for action 'press'"
             }
@@ -112,7 +129,11 @@ struct AgentBrowserTool: Tool {
         case "screenshot":
             commandArgs += ["screenshot"]
             if let path = nonEmpty(arguments.path) {
-                commandArgs.append(path)
+                let check = ToolSafety.shared.checkPath(path, forWrite: true)
+                guard check.allowed else {
+                    return "Error: Screenshot path denied by security policy (\(check.reason ?? "blocked"))."
+                }
+                commandArgs.append(check.resolvedPath)
             }
 
         case "close":

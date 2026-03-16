@@ -3,6 +3,31 @@ import Foundation
 @testable import apple_code
 
 final class ToolBasicsTests: XCTestCase {
+    private var previousPolicy: ToolSafetyPolicy?
+
+    override func setUp() {
+        super.setUp()
+        previousPolicy = ToolSafety.shared.currentPolicy()
+        ToolSafety.shared.configure(
+            ToolSafetyPolicy.make(
+                profile: .compatibility,
+                workingDirectory: FileManager.default.currentDirectoryPath,
+                additionalAllowedRoots: [FileManager.default.temporaryDirectory.path],
+                allowedHosts: [],
+                allowPrivateNetwork: true,
+                allowDangerousWithoutConfirmation: true,
+                allowAutomaticFallbackExecution: true
+            )
+        )
+    }
+
+    override func tearDown() {
+        if let previousPolicy {
+            ToolSafety.shared.configure(previousPolicy)
+        }
+        super.tearDown()
+    }
+
     private func tempDir() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("apple-code-tests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)

@@ -15,7 +15,11 @@ struct ListDirectoryTool: Tool {
 
     func call(arguments: Arguments) async throws -> String {
         let dirPath = arguments.path ?? "."
-        let url = URL(fileURLWithPath: dirPath)
+        let check = ToolSafety.shared.checkPath(dirPath, forWrite: false)
+        guard check.allowed else {
+            return "Error: Access denied for path '\(dirPath)' (\(check.reason ?? "blocked"))."
+        }
+        let url = URL(fileURLWithPath: check.resolvedPath)
         let fm = FileManager.default
 
         guard fm.fileExists(atPath: url.path) else {

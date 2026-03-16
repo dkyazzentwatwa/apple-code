@@ -64,14 +64,22 @@ struct RunCommandTool: Tool {
 
     func call(arguments: Arguments) async throws -> String {
         let cmd = arguments.command
+        let policy = ToolSafety.shared.currentPolicy()
 
         switch Self.assess(cmd) {
         case .blocked(let reason):
             appendAuditLog(command: cmd, decision: "BLOCKED", reason: reason)
             return "Error: Command blocked for safety: \(reason). Command: \(cmd)"
         case .warn(let reason):
-            // In tool context (called by model), we emit a warning in the result
-            // but still run – the model needs feedback. Humans get [y/N] in REPL.
+            if !policy.allowDangerousWithoutConfirmation {
+                appendAuditLog(command: cmd, decision: "BLOCKED-WARN", reason: reason)
+                return """
+                Error: Command requires explicit confirmation under the active security policy (\(policy.profile.rawValue)).
+                Blocked command: \(cmd)
+                Reason: \(reason)
+                Hint: rerun apple-code with --dangerous-without-confirm only if you trust this command.
+                """
+            }
             appendAuditLog(command: cmd, decision: "ALLOWED-WARN", reason: reason)
         case .safe:
             break

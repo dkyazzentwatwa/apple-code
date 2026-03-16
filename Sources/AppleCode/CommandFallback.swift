@@ -239,6 +239,7 @@ func resolveCommandRefusalFallback(
     modelReply: String,
     timeoutSeconds: Int
 ) async -> String? {
+    guard ToolSafety.shared.currentPolicy().allowAutomaticFallbackExecution else { return nil }
     let cleanedPrompt = normalizePromptForExtraction(userPrompt)
     guard isCommandIntentPrompt(cleanedPrompt) else { return nil }
     guard looksLikeCommandRefusal(modelReply) || looksLikeNullOrThinReply(modelReply) else { return nil }
@@ -256,6 +257,7 @@ func resolveFilesystemRefusalFallback(
     userPrompt: String,
     modelReply: String
 ) async -> String? {
+    guard ToolSafety.shared.currentPolicy().allowAutomaticFallbackExecution else { return nil }
     let cleanedPrompt = normalizePromptForExtraction(userPrompt)
     let readIntent = isFileReadIntentPrompt(cleanedPrompt)
     let dirIntent = isDirectoryIntentPrompt(cleanedPrompt)

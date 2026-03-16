@@ -16,6 +16,7 @@ struct NotesTool: Tool {
     }
 
     func call(arguments: Arguments) async throws -> String {
+        let policy = ToolSafety.shared.currentPolicy()
         switch arguments.action {
         case "list_folders":
             return listFolders()
@@ -32,11 +33,17 @@ struct NotesTool: Tool {
             }
             return getContent(nameOrId: query, folder: nil)
         case "create":
+            guard policy.allowDangerousWithoutConfirmation else {
+                return "Error: Notes create is blocked by security profile '\(policy.profile.rawValue)'. Use --dangerous-without-confirm to allow."
+            }
             guard let query = arguments.query else {
                 return "Error: 'query' (title) is required for create"
             }
             return create(title: query, body: arguments.body ?? "", folder: nil)
         case "append":
+            guard policy.allowDangerousWithoutConfirmation else {
+                return "Error: Notes append is blocked by security profile '\(policy.profile.rawValue)'. Use --dangerous-without-confirm to allow."
+            }
             guard let query = arguments.query, let body = arguments.body else {
                 return "Error: 'query' (note name) and 'body' (text) are required for append"
             }
