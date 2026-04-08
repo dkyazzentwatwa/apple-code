@@ -8,7 +8,110 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-test:
+  portable-core:
+    name: Portable Core Validation
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Swift 6.2
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.2"
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Verify Swift 6.2 is active
+        run: swift --version | grep -E "Swift version 6\\.2(\\.| )"
+
+      - name: Build and test portable core subset
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tmpdir="$(mktemp -d)"
+          trap 'rm -rf "$tmpdir"' EXIT
+
+          mkdir -p "$tmpdir/Sources/AppleCodeCore" "$tmpdir/Tests/AppleCodeCoreTests"
+
+          while IFS= read -r file; do
+            cp "$file" "$tmpdir/Sources/AppleCodeCore/"
+          done <<'EOF'
+          Sources/AppleCode/CLICommands.swift
+          Sources/AppleCode/Config.swift
+          Sources/AppleCode/ConversationViewport.swift
+          Sources/AppleCode/InputComposer.swift
+          Sources/AppleCode/ModelConfig.swift
+          Sources/AppleCode/OllamaModelDiscovery.swift
+          Sources/AppleCode/OutputFormatter.swift
+          Sources/AppleCode/OutputHighlighter.swift
+          Sources/AppleCode/ResponseTimeout.swift
+          Sources/AppleCode/Session.swift
+          Sources/AppleCode/TUIConfig.swift
+          Sources/AppleCode/TUIRenderer.swift
+          Sources/AppleCode/TUITheme.swift
+          Sources/AppleCode/TUIUtils.swift
+          Sources/AppleCode/TerminalCapabilities.swift
+          Sources/AppleCode/TokenBudgetManager.swift
+          Sources/AppleCode/UILogger.swift
+          Sources/AppleCode/UIState.swift
+          Sources/AppleCode/WebTextUtils.swift
+          EOF
+
+          while IFS= read -r file; do
+            sed 's/@testable import apple_code/@testable import AppleCodeCore/' "$file" \
+              > "$tmpdir/Tests/AppleCodeCoreTests/$(basename "$file")"
+          done <<'EOF'
+          Tests/AppleCodeTests/CLICommandsBehaviorTests.swift
+          Tests/AppleCodeTests/CLICommandsTests.swift
+          Tests/AppleCodeTests/ConversationViewportTests.swift
+          Tests/AppleCodeTests/ModelConfigTests.swift
+          Tests/AppleCodeTests/OllamaModelDiscoveryTests.swift
+          Tests/AppleCodeTests/OutputFormatterTests.swift
+          Tests/AppleCodeTests/ResponseTimeoutTests.swift
+          Tests/AppleCodeTests/SessionAndDiscoveryTests.swift
+          Tests/AppleCodeTests/TUIAndThemeTests.swift
+          Tests/AppleCodeTests/UILoggerAndUIStateTests.swift
+          Tests/AppleCodeTests/WebTextUtilsTests.swift
+          EOF
+
+          cat > "$tmpdir/Package.swift" <<'EOF'
+          // swift-tools-version: 6.2
+          import PackageDescription
+
+          let package = Package(
+              name: "AppleCodeCore",
+              platforms: [.macOS(.v13)],
+              products: [
+                  .library(name: "AppleCodeCore", targets: ["AppleCodeCore"])
+              ],
+              targets: [
+                  .target(name: "AppleCodeCore", path: "Sources/AppleCodeCore"),
+                  .testTarget(name: "AppleCodeCoreTests", dependencies: ["AppleCodeCore"], path: "Tests/AppleCodeCoreTests")
+              ]
+          )
+          EOF
+
+          swift build --package-path "$tmpdir"
+          swift test --package-path "$tmpdir"
+
+      - name: Portable core summary
+        if: always()
+        run: |
+          {
+            echo "## Portable Core Validation"
+            echo
+            echo "- Always runs, even when FoundationModels is unavailable."
+            echo "- Builds and tests the FoundationModels-free shared Swift subset."
+            echo "- Covers command parsing, config/model resolution, session state, TUI/theme logic, logging, timeouts, and web text utilities."
+            echo "- This lane is a portability guard, not a substitute for full FoundationModels validation."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  foundationmodels-full:
+    name: Full FoundationModels Validation
     runs-on: macos-latest
 
     steps:
@@ -44,7 +147,7 @@ jobs:
             echo "FoundationModels is available on this runner."
           else
             echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "FoundationModels is NOT available on this runner; skipping build/test."
+            echo "FoundationModels is NOT available on this runner; full validation is being skipped explicitly."
             cat /tmp/foundationmodels-check.err
           fi
           exit 0
@@ -57,7 +160,24 @@ jobs:
         if: steps.foundationmodels.outputs.available == 'true'
         run: ./scripts/coverage.sh
 
-      - name: Skip summary
-        if: steps.foundationmodels.outputs.available != 'true'
+      - name: Full validation summary
+        if: always()
+        shell: bash
         run: |
-          echo "Skipped: project requires FoundationModels (macOS 26+ on Apple Silicon)."
+          if [ "${{ steps.foundationmodels.outputs.available }}" = "true" ]; then
+            {
+              echo "## Full FoundationModels Validation"
+              echo
+              echo "- FoundationModels was available on this runner."
+              echo "- Ran the full project build and coverage-gated test suite."
+              echo "- This is the only lane that validates Apple Foundation Models integration end to end."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "## Full FoundationModels Validation"
+              echo
+              echo "- FoundationModels was unavailable on this runner."
+              echo "- Full project build and coverage tests were skipped explicitly."
+              echo "- Portable Core Validation still ran, so CI did not silently go green without any verification."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
