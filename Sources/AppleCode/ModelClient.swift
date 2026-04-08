@@ -72,7 +72,7 @@ func makeModelClient(
 
     case .ollama:
         guard let model = config.model?.trimmingCharacters(in: .whitespacesAndNewlines), !model.isEmpty else {
-            throw ModelClientFactoryError.missingModel
+            throw ModelConfigError.missingModel
         }
 
         let rawBaseURL: String = config.baseURL
@@ -87,7 +87,6 @@ func makeModelClient(
 
 enum ModelClientFactoryError: LocalizedError {
     case appleUnavailable
-    case missingModel
     case invalidBaseURL
     case modelNotInstalled(model: String)
     case ollamaUnavailable(String)
@@ -96,8 +95,6 @@ enum ModelClientFactoryError: LocalizedError {
         switch self {
         case .appleUnavailable:
             return "Apple Foundation Models not available. Requires macOS 26+ on Apple Silicon."
-        case .missingModel:
-            return "Ollama requires a model. Select one in /settings or set --model / OLLAMA_MODEL."
         case .invalidBaseURL:
             return "Ollama base URL is invalid."
         case .modelNotInstalled(let model):

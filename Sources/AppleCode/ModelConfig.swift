@@ -76,6 +76,9 @@ struct ModelConfig: Codable, Sendable {
 
         case .ollama:
             let effectiveModel = nonEmpty(trimmedModel) ?? nonEmpty(env["OLLAMA_MODEL"])
+            guard effectiveModel != nil else {
+                throw ModelConfigError.missingModel
+            }
 
             let rawBaseURL = nonEmpty(trimmedBaseURL)
                 ?? nonEmpty(env["OLLAMA_BASE_URL"])
