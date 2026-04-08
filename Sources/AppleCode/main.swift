@@ -228,6 +228,44 @@ private func effectiveResponseTimeout(for config: ModelConfig, requestedSeconds:
     }
 }
 
+private enum StartupWorkingDirectoryError: LocalizedError {
+    case notFound(String)
+    case notDirectory(String)
+    case changeFailed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .notFound(let path):
+            return "Working directory not found: \(path)"
+        case .notDirectory(let path):
+            return "Working directory is not a directory: \(path)"
+        case .changeFailed(let path):
+            return "Could not change working directory to: \(path)"
+        }
+    }
+}
+
+func prepareStartupWorkingDirectory(cwd: String?) throws -> String {
+    let fileManager = FileManager.default
+    guard let cwd else {
+        return fileManager.currentDirectoryPath
+    }
+
+    let expandedPath = (cwd as NSString).expandingTildeInPath
+    var isDirectory: ObjCBool = false
+    guard fileManager.fileExists(atPath: expandedPath, isDirectory: &isDirectory) else {
+        throw StartupWorkingDirectoryError.notFound(expandedPath)
+    }
+    guard isDirectory.boolValue else {
+        throw StartupWorkingDirectoryError.notDirectory(expandedPath)
+    }
+    guard fileManager.changeCurrentDirectoryPath(expandedPath) else {
+        throw StartupWorkingDirectoryError.changeFailed(expandedPath)
+    }
+
+    return fileManager.currentDirectoryPath
+}
+
 var promptParts: [String] = []
 var systemInstructions: String?
 var cwd: String?
@@ -356,9 +394,16 @@ if checkAppleTools {
     exit(0)
 }
 
+let workingDir: String
+do {
+    workingDir = try prepareStartupWorkingDirectory(cwd: cwd)
+} catch {
+    FileHandle.standardError.write(Data("Error: \(error.localizedDescription)\n".utf8))
+    exit(1)
+}
+
 // Load config file; CLI flags take precedence over config values.
-let effectiveCWD = cwd ?? FileManager.default.currentDirectoryPath
-let fileConfig = AppConfig.load(workingDir: effectiveCWD)
+let fileConfig = AppConfig.load(workingDir: workingDir)
 AppConfig.ensureConfigDir()
 if providerFlag == nil    { providerFlag    = fileConfig.provider }
 if modelFlag == nil       { modelFlag       = fileConfig.model }
@@ -376,14 +421,6 @@ do {
 } catch {
     FileHandle.standardError.write(Data("Error: \(error.localizedDescription)\n".utf8))
     exit(1)
-}
-
-let workingDir: String
-if let cwd = cwd {
-    FileManager.default.changeCurrentDirectoryPath(cwd)
-    workingDir = cwd
-} else {
-    workingDir = FileManager.default.currentDirectoryPath
 }
 
 let shouldBeInteractive = forceInteractive || promptArg == nil || promptArg?.isEmpty == true
