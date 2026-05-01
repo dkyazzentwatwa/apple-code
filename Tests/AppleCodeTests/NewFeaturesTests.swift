@@ -200,6 +200,7 @@ final class AppConfigTests: XCTestCase {
         allow_private_network = false
         dangerous_without_confirm = true
         allow_fallback_execution = false
+        privacy_redaction = all
         """.write(toFile: configPath, atomically: true, encoding: .utf8)
 
         let config = AppConfig.parse(filePath: configPath)
@@ -209,6 +210,7 @@ final class AppConfigTests: XCTestCase {
         XCTAssertEqual(config?.allowPrivateNetwork, false)
         XCTAssertEqual(config?.dangerousWithoutConfirm, true)
         XCTAssertEqual(config?.allowFallbackExecution, false)
+        XCTAssertEqual(config?.privacyRedaction, "all")
     }
 }
 

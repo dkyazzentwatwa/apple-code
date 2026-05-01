@@ -1,10 +1,10 @@
 # Security Audit Report - apple-code
 
-Date: 2026-03-03
+Date: 2026-05-01
 Scope: Full code audit + threat model for local single-user deployment.
 
 ## Executive Summary
-Major high-risk surfaces were command execution, unrestricted filesystem access, and automatic fallback tool execution. A security policy layer was implemented and integrated across high-risk tools. Secure-by-default behavior is now enforced via a new security profile system with explicit opt-in flags for dangerous behaviors.
+Major high-risk surfaces were command execution, unrestricted filesystem access, automatic fallback tool execution, and sensitive local persistence. A security policy layer is now wired into CLI/config startup and high-risk tools. Secure-by-default behavior is enforced via security profiles with explicit opt-in flags for dangerous behaviors.
 
 ## Severity Legend
 - Critical: immediate compromise or severe destructive impact likely.
@@ -47,18 +47,19 @@ Major high-risk surfaces were command execution, unrestricted filesystem access,
 ### AC-SEC-006 (Medium) - Session/log data stored locally in plaintext
 - Evidence: `Session.swift`, `UILogger.swift`.
 - Risk: local disclosure if host account or filesystem permissions are weak.
-- Status: Open (documented).
-- Recommendation: enforce restrictive file permissions and add optional redaction/encryption mode.
+- Status: Partially fixed.
+- Fix: sessions, logs, and command audit files are written with user-only file permissions; configurable privacy redaction supports logs or transcripts. Encryption remains future work.
 
 ## Implemented Changes
 1. Added `ToolSafetyPolicy` and `ToolSafety` shared policy runtime (`Sources/AppleCode/ToolSafetyPolicy.swift`).
-2. Added CLI and config-level security controls:
+2. Wired CLI and config-level security controls:
 - `--security-profile`
 - `--allow-path`
 - `--allow-host`
 - `--allow-private-network`
 - `--dangerous-without-confirm`
 - `--allow-fallback-execution`
+- `--privacy-redaction`
 3. Added path confinement checks to filesystem and PDF tools.
 4. Added URL host safety checks to web/browser entry points.
 5. Added secure-default blocking for dangerous command warnings and mutating operations.
@@ -67,11 +68,11 @@ Major high-risk surfaces were command execution, unrestricted filesystem access,
 
 ## Testing
 - Added `Tests/AppleCodeTests/SecurityPolicyTests.swift`.
-- Updated existing test classes to set explicit test policy where needed.
-- Existing unrelated baseline failures in `ModelConfigTests` may remain and should be tracked separately.
+- Added runtime bootstrap tests for security/profile config precedence.
+- Updated persistence tests to verify `0600` local file modes.
+- `swift test` passes locally on macOS 26.4.1 / Swift 6.3.1.
 
 ## Residual Risk / Next Actions
 1. Add DNS-resolution-based private IP detection for domain targets.
-2. Harden `~/.apple-code` file permissions to least privilege.
-3. Add redaction/retention controls for transcripts and logs.
-4. Add explicit REPL confirmation UX for dangerous operations.
+2. Add optional transcript/log encryption for highly sensitive workstations.
+3. Add explicit REPL confirmation UX for dangerous operations instead of relying only on profile flags.

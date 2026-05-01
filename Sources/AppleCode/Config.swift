@@ -14,6 +14,7 @@ struct AppConfig {
     var allowPrivateNetwork: Bool?
     var dangerousWithoutConfirm: Bool?
     var allowFallbackExecution: Bool?
+    var privacyRedaction: String?
 
     static let empty = AppConfig()
 
@@ -55,6 +56,7 @@ struct AppConfig {
         if let v = other.allowPrivateNetwork { allowPrivateNetwork = v }
         if let v = other.dangerousWithoutConfirm { dangerousWithoutConfirm = v }
         if let v = other.allowFallbackExecution { allowFallbackExecution = v }
+        if let v = other.privacyRedaction { privacyRedaction = v }
     }
 
     /// Parse a key=value config file. Lines starting with # are comments.
@@ -94,6 +96,8 @@ struct AppConfig {
                 config.dangerousWithoutConfirm = parseBool(value)
             case "allow_fallback_execution", "automatic_fallback_execution":
                 config.allowFallbackExecution = parseBool(value)
+            case "privacy_redaction", "redaction":
+                config.privacyRedaction = value
             default: break
             }
         }
@@ -121,6 +125,6 @@ struct AppConfig {
     static func ensureConfigDir() {
         let dir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".apple-code")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try? SecureLocalStore.ensurePrivateDirectory(dir)
     }
 }

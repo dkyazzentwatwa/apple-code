@@ -75,7 +75,7 @@ final class SessionManager {
     private init() {
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         sessionsDir = homeDir.appendingPathComponent(".apple-code/sessions")
-        try? FileManager.default.createDirectory(at: sessionsDir, withIntermediateDirectories: true)
+        try? SecureLocalStore.ensurePrivateDirectory(sessionsDir)
     }
 
     func createSession(
@@ -107,9 +107,9 @@ final class SessionManager {
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
         encoder.dateEncodingStrategy = .iso8601
-        let data = try encoder.encode(session)
+        let data = try encoder.encode(redactedSessionIfNeeded(session))
         let url = sessionsDir.appendingPathComponent("\(session.id.uuidString).json")
-        try data.write(to: url)
+        try SecureLocalStore.writePrivateFile(data: data, to: url)
         currentSession = session
     }
 
@@ -160,6 +160,17 @@ final class SessionManager {
 
     func sessionDirectory() -> URL {
         return sessionsDir
+    }
+
+    private func redactedSessionIfNeeded(_ session: Session) -> Session {
+        guard PrivacyRedactor.shared.currentMode().redactTranscripts else {
+            return session
+        }
+        var copy = session
+        copy.messages = session.messages.map {
+            Message(role: $0.role, content: PrivacyRedactor.shared.redactForTranscripts($0.content))
+        }
+        return copy
     }
 }
 

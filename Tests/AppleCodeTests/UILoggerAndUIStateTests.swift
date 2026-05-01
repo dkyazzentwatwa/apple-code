@@ -17,6 +17,7 @@ final class UILoggerAndUIStateTests: XCTestCase {
         let content = try String(contentsOf: files[0], encoding: .utf8)
         XCTAssertTrue(content.contains("first"))
         XCTAssertTrue(content.contains("second"))
+        XCTAssertEqual(SecureLocalStore.mode(for: files[0]), 0o600)
     }
 
     func testUIStateComputedRowsAndHeight() {

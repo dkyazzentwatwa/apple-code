@@ -36,6 +36,10 @@ struct AgentBrowserTool: Tool {
             return "Error: Unsupported action '\(arguments.action)'. Allowed: \(Self.allowedActions.sorted().joined(separator: ", "))"
         }
         let policy = ToolSafety.shared.currentPolicy()
+        if ["click", "fill", "type", "press"].contains(action),
+           !policy.allowDangerousWithoutConfirmation {
+            return "Error: Browser \(action) is blocked by security profile '\(policy.profile.rawValue)'. Use --dangerous-without-confirm to allow."
+        }
 
         let timeoutSeconds = max(1, min(arguments.timeoutSeconds ?? 30, 120))
         let sessionName = normalizedSessionName(arguments.session)

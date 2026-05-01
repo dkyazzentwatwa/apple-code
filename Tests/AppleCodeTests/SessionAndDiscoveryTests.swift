@@ -28,6 +28,8 @@ final class SessionAndDiscoveryTests: XCTestCase {
         session.addMessage(role: "assistant", content: "hello")
 
         try manager.saveSession(session)
+        let url = manager.sessionDirectory().appendingPathComponent("\(session.id.uuidString).json")
+        XCTAssertEqual(SecureLocalStore.mode(for: url), 0o600)
         let loaded = try manager.loadSession(id: session.id)
         XCTAssertEqual(loaded.id, session.id)
         XCTAssertEqual(loaded.messages.count, 1)
@@ -37,6 +39,24 @@ final class SessionAndDiscoveryTests: XCTestCase {
 
         try manager.deleteSession(id: session.id)
         XCTAssertFalse(manager.listSessions().contains(where: { $0.id == session.id }))
+    }
+
+    func testSessionSaveCanRedactPersistedTranscript() throws {
+        let manager = SessionManager.shared
+        let previousRedaction = PrivacyRedactor.shared.currentMode()
+        defer { PrivacyRedactor.shared.configure(mode: previousRedaction) }
+        PrivacyRedactor.shared.configure(mode: .transcripts)
+        var session = manager.createSession(workingDir: "/tmp")
+        session.addMessage(role: "user", content: "email me@example.com token=secretvalue")
+
+        try manager.saveSession(session)
+        defer { try? manager.deleteSession(id: session.id) }
+
+        let url = manager.sessionDirectory().appendingPathComponent("\(session.id.uuidString).json")
+        let raw = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(raw.contains("[REDACTED_EMAIL]"))
+        XCTAssertTrue(raw.contains("token=[REDACTED]"))
+        XCTAssertFalse(raw.contains("me@example.com"))
     }
 
     func testOllamaPreferredDefaultModelSelection() {

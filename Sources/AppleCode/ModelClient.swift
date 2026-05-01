@@ -121,6 +121,40 @@ private struct AppleModelClient: ModelClient {
         return response.content
     }
 
+    func respondStream(
+        prompt: String,
+        tools: [any Tool],
+        instructions: String,
+        onEvent: @escaping (ModelEvent) async -> Void
+    ) async throws -> String {
+        let session = LanguageModelSession(tools: tools, instructions: instructions)
+        await onEvent(.status("thinking"))
+
+        var full = ""
+        do {
+            for try await snapshot in session.streamResponse(to: prompt) {
+                let current = snapshot.content
+                let token: String
+                if current.hasPrefix(full) {
+                    token = String(current.dropFirst(full.count))
+                } else {
+                    token = current
+                }
+                full = current
+                if !token.isEmpty {
+                    await onEvent(.token(token))
+                }
+            }
+        } catch LanguageModelSession.GenerationError.exceededContextWindowSize {
+            throw AppleModelClientError.contextWindowExceeded
+        } catch {
+            throw error
+        }
+
+        await onEvent(.completed(full))
+        return full
+    }
+
     func statusLines() -> [String] {
         let model = SystemLanguageModel.default
         var lines = [
@@ -131,6 +165,17 @@ private struct AppleModelClient: ModelClient {
             lines.append("Supports streaming: yes")
         }
         return lines
+    }
+}
+
+private enum AppleModelClientError: LocalizedError {
+    case contextWindowExceeded
+
+    var errorDescription: String? {
+        switch self {
+        case .contextWindowExceeded:
+            return "Apple Foundation Models context window was exceeded. Run /compact in REPL or shorten the prompt/tool output and try again."
+        }
     }
 }
 

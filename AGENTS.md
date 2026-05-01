@@ -17,6 +17,9 @@ swift build
 # Build release version
 swift build -c release
 
+# Full local production gate
+./scripts/check.sh
+
 # Run the CLI
 swift run apple-code "your prompt"
 
@@ -31,7 +34,16 @@ swift build -c release
 apple-code [options] ["prompt"]
   --system "..."       Custom system instructions
   --cwd /path/to/dir  Working directory for file/command tools
+  --provider <name>    Model provider: apple | ollama
+  --model <id>         Model ID for Ollama
   --timeout N          Max seconds (default: 120)
+  --security-profile p Security profile: secure | balanced | compatibility
+  --allow-path /path   Additional allowed filesystem root (repeatable)
+  --allow-host host    Allowed web host/domain (repeatable)
+  --allow-private-network
+  --dangerous-without-confirm
+  --allow-fallback-execution
+  --privacy-redaction m Redaction mode: off | logs | transcripts | all
   --no-apple-tools    Disable Apple app tools
   -i, --interactive    Force interactive REPL mode
   --resume <id>        Resume a saved session
@@ -52,9 +64,9 @@ apple-code [options] ["prompt"]
 
 ### Testing
 
-- No test suite currently exists for this project
-- To add tests, create a `Tests/` directory with XCTest or Swift Testing
 - Run tests with: `swift test`
+- Run the full local gate with: `./scripts/check.sh`
+- Coverage is enforced with: `./scripts/coverage.sh`
 
 ### Linting
 
@@ -136,6 +148,15 @@ exit(1)
 2. **Truncate large outputs**: Files >50KB, command output >100KB should be truncated
 3. **Safety first**: `RunCommandTool` has a blocklist for dangerous commands
 4. **Timeout handling**: Use `DispatchWorkItem` with timeout for long-running operations
+5. **Keep AFM prompts small**: tool routing is capped to avoid overfilling the on-device context window
+
+### Runtime Security
+
+- `secure` is the default profile.
+- Configure runtime policy through `RuntimeSecurityOptions`, not ad hoc global changes in `main.swift`.
+- Re-apply the runtime policy after `/cd` or session switches so allowed roots track the active working directory.
+- Session, log, and audit files should be written through `SecureLocalStore` to preserve user-only permissions.
+- Redact persisted content through `PrivacyRedactor` when privacy redaction is enabled.
 
 ### Working Directory
 
@@ -173,6 +194,9 @@ Append custom `--system` instructions after the default preamble.
 | `Sources/AppleCode/Session.swift` | Session model and persistence |
 | `Sources/AppleCode/CLICommands.swift` | Interactive command handlers (:help, :quit, etc.) |
 | `Sources/AppleCode/TUIUtils.swift` | Terminal UI utilities (colors, formatting) |
+| `Sources/AppleCode/RuntimeSecurityOptions.swift` | Security/profile config bootstrap |
+| `Sources/AppleCode/SecureLocalStore.swift` | Private local file and directory writes |
+| `Sources/AppleCode/PrivacyRedactor.swift` | Configurable log/transcript redaction |
 | `Sources/AppleCode/AppleScriptRunner.swift` | AppleScript execution helper |
 | `Sources/AppleCode/Tools/ReadFileTool.swift` | File reading (50KB limit) |
 | `Sources/AppleCode/Tools/WriteFileTool.swift` | File writing |
@@ -192,6 +216,7 @@ Append custom `--system` instructions after the default preamble.
 
 - Requires macOS 26+ on Apple Silicon
 - ~4096 token context window (much smaller than cloud models)
+- Tool selection is intentionally capped to keep FoundationModels prompts small
 - Best for simple tasks; complex multi-file refactoring may degrade
 - No Apple app tools on non-Apple Silicon Macs
 

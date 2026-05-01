@@ -30,4 +30,31 @@ final class RouteToolsTests: XCTestCase {
         let toolNames = names(selected)
         XCTAssertTrue(toolNames.contains("writeFile"))
     }
+
+    func testRepoSummarySelectsReadOnlyProjectTools() {
+        let selected = routeTools(
+            for: "summarize this repo",
+            includeAppleTools: true,
+            includeWebTools: true,
+            includeBrowserTools: true
+        )
+        let toolNames = names(selected)
+        XCTAssertTrue(toolNames.contains("readFile"))
+        XCTAssertTrue(toolNames.contains("listDirectory"))
+        XCTAssertTrue(toolNames.contains("searchFiles"))
+        XCTAssertTrue(toolNames.contains("searchContent"))
+        XCTAssertFalse(toolNames.contains("writeFile"))
+        XCTAssertFalse(toolNames.contains("editFile"))
+    }
+
+    func testToolSelectionIsCappedForAFMContext() {
+        let selected = routeTools(
+            for: "search web and open browser and create pdf from notes calendar reminders mail messages git status run swift test",
+            includeAppleTools: true,
+            includeWebTools: true,
+            includeBrowserTools: true
+        )
+
+        XCTAssertLessThanOrEqual(selected.count, 5)
+    }
 }

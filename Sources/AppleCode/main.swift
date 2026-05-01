@@ -25,6 +25,13 @@ func printUsage() {
       --run-notes-action a   Run notes tool directly and exit
       --run-notes-query q    Query/title for --run-notes-action
       --run-notes-body b     Body text for --run-notes-action
+      --security-profile p   Security profile: secure | balanced | compatibility
+      --allow-path /path     Additional allowed filesystem root (repeatable)
+      --allow-host host      Allowed web host/domain (repeatable)
+      --allow-private-network Allow localhost/private network URLs
+      --dangerous-without-confirm Allow risky mutating actions without extra gate
+      --allow-fallback-execution Allow automatic refusal fallback tool execution
+      --privacy-redaction m  Redaction mode: off | logs | transcripts | all
       --verbose              Show full output (disable summary mode)
       -i, --interactive      Force interactive mode (default if no prompt)
       --resume <session-id>  Resume a session
@@ -35,9 +42,11 @@ func printUsage() {
       ~/.apple-code/config   Global config
       ./.apple-code          Project config (overrides global)
       Keys: provider, model, base_url, theme, ui_mode, system_prompt
+            security_profile, allow_paths, allow_hosts, allow_private_network
+            dangerous_without_confirm, allow_fallback_execution, privacy_redaction
 
     Project context:
-      APPLE-CODE.md or CLAUDE.md in CWD is auto-loaded as system context (8000 char limit)
+      APPLE-CODE.md or CLAUDE.md in CWD is auto-loaded as system context (3000 char limit)
 
     Interactive Commands:
       /quit, /q             Exit and save session
@@ -142,15 +151,24 @@ func routeTools(
         p.contains("repo status")
     )
 
+    let wantsFollowupCreate = p.contains("create that") || p.contains("save that") || p.contains("write that")
+    let wantsProjectSummary = !hasNotesIntent && p.contains("summarize") && (
+        words.contains("repo") ||
+        words.contains("repository") ||
+        words.contains("project") ||
+        words.contains("codebase")
+    )
+
     let wantsFile = !hasNotesIntent && !wantsGit && (
         p.contains("file") || p.contains("readme") || p.contains("package.swift") ||
         p.contains("read the") || p.contains("read this") || p.contains("show me the") ||
         p.contains("open ") || p.contains("contents of") || p.contains("write to") ||
-        p.contains("create a file") || p.contains("save to") || p.contains("edit "))
+        p.contains("create a file") || p.contains("save to") || p.contains("edit ") ||
+        wantsFollowupCreate)
 
     let wantsDir = !hasNotesIntent && (p.contains("directory") || p.contains("folder") || p.contains("list files") ||
                    p.contains("what files") || p.contains("what's in") || p.contains("ls ") ||
-                   p.contains("tree") || p.contains("show files"))
+                   p.contains("tree") || p.contains("show files") || wantsFollowupCreate)
 
     let wantsSearch = !hasNotesIntent && (p.contains("grep") || p.contains("find all") || p.contains("search for") ||
                       p.contains("look for") || p.contains("locate") || p.contains("which files") ||
@@ -195,6 +213,7 @@ func routeTools(
         p.contains("extract from") || hasURLInPrompt
     )
 
+    if wantsProjectSummary { selected.append(ReadFileTool()); selected.append(ListDirectoryTool()); selected.append(SearchFilesTool()); selected.append(SearchContentTool()) }
     if wantsFile   { selected.append(ReadFileTool()); selected.append(WriteFileTool()); selected.append(EditFileTool()) }
     if wantsDir    { selected.append(ListDirectoryTool()) }
     if wantsSearch { selected.append(SearchFilesTool()); selected.append(SearchContentTool()) }
@@ -213,7 +232,7 @@ func routeTools(
         }
     }
 
-    return deduped
+    return Array(deduped.prefix(5))
 }
 
 let args = CommandLine.arguments
@@ -235,6 +254,7 @@ var providerFlag: String?
 var modelFlag: String?
 var baseURLFlag: String?
 var uiModeFlag: String?
+var securityOverrides = RuntimeSecurityCLIOverrides()
 var timeout: Int = 120
 var noAppleTools = false
 var checkAppleTools = false
@@ -272,6 +292,24 @@ while i < args.count {
     case "--ui":
         i += 1
         if i < args.count { uiModeFlag = args[i] }
+    case "--security-profile":
+        i += 1
+        if i < args.count { securityOverrides.securityProfile = args[i] }
+    case "--allow-path":
+        i += 1
+        if i < args.count { securityOverrides.allowPaths.append(args[i]) }
+    case "--allow-host":
+        i += 1
+        if i < args.count { securityOverrides.allowHosts.append(args[i]) }
+    case "--allow-private-network":
+        securityOverrides.allowPrivateNetwork = true
+    case "--dangerous-without-confirm":
+        securityOverrides.dangerousWithoutConfirm = true
+    case "--allow-fallback-execution":
+        securityOverrides.allowFallbackExecution = true
+    case "--privacy-redaction":
+        i += 1
+        if i < args.count { securityOverrides.privacyRedaction = args[i] }
     case "--timeout":
         i += 1
         if i < args.count { timeout = Int(args[i]) ?? 120 }
@@ -332,6 +370,52 @@ if promptArg == nil && isatty(fileno(stdin)) == 0 {
     }
 }
 
+// Load config file; CLI flags take precedence over config values.
+let effectiveCWD = cwd ?? FileManager.default.currentDirectoryPath
+let fileConfig = AppConfig.load(workingDir: effectiveCWD)
+AppConfig.ensureConfigDir()
+if providerFlag == nil    { providerFlag    = fileConfig.provider }
+if modelFlag == nil       { modelFlag       = fileConfig.model }
+if baseURLFlag == nil     { baseURLFlag     = fileConfig.baseURL }
+if uiModeFlag == nil      { uiModeFlag      = fileConfig.uiMode }
+if systemInstructions == nil { systemInstructions = fileConfig.systemPrompt }
+
+let runtimeSecurityOptions: RuntimeSecurityOptions
+do {
+    runtimeSecurityOptions = try RuntimeSecurityOptions.resolve(
+        config: fileConfig,
+        cli: securityOverrides
+    )
+} catch {
+    FileHandle.standardError.write(Data("Error: \(error.localizedDescription)\n".utf8))
+    exit(1)
+}
+
+let runtimeModelConfig: ModelConfig
+do {
+    runtimeModelConfig = try ModelConfig.resolve(
+        providerFlag: providerFlag,
+        modelFlag: modelFlag,
+        baseURLFlag: baseURLFlag
+    )
+} catch {
+    FileHandle.standardError.write(Data("Error: \(error.localizedDescription)\n".utf8))
+    exit(1)
+}
+
+let workingDir: String
+if let cwd = cwd {
+    let expandedCWD = (cwd as NSString).expandingTildeInPath
+    guard FileManager.default.changeCurrentDirectoryPath(expandedCWD) else {
+        FileHandle.standardError.write(Data("Error: Could not change directory to \(cwd)\n".utf8))
+        exit(1)
+    }
+    workingDir = FileManager.default.currentDirectoryPath
+} else {
+    workingDir = FileManager.default.currentDirectoryPath
+}
+runtimeSecurityOptions.configureRuntime(workingDirectory: workingDir)
+
 if let fetchURL = runWebFetchURL {
     let result = try await WebFetchTool().call(arguments: .init(url: fetchURL, maxChars: 12_000))
     print(result)
@@ -354,36 +438,6 @@ if checkAppleTools {
     let result = await runAppleToolDiagnostics()
     print(result)
     exit(0)
-}
-
-// Load config file; CLI flags take precedence over config values.
-let effectiveCWD = cwd ?? FileManager.default.currentDirectoryPath
-let fileConfig = AppConfig.load(workingDir: effectiveCWD)
-AppConfig.ensureConfigDir()
-if providerFlag == nil    { providerFlag    = fileConfig.provider }
-if modelFlag == nil       { modelFlag       = fileConfig.model }
-if baseURLFlag == nil     { baseURLFlag     = fileConfig.baseURL }
-if uiModeFlag == nil      { uiModeFlag      = fileConfig.uiMode }
-if systemInstructions == nil { systemInstructions = fileConfig.systemPrompt }
-
-let runtimeModelConfig: ModelConfig
-do {
-    runtimeModelConfig = try ModelConfig.resolve(
-        providerFlag: providerFlag,
-        modelFlag: modelFlag,
-        baseURLFlag: baseURLFlag
-    )
-} catch {
-    FileHandle.standardError.write(Data("Error: \(error.localizedDescription)\n".utf8))
-    exit(1)
-}
-
-let workingDir: String
-if let cwd = cwd {
-    FileManager.default.changeCurrentDirectoryPath(cwd)
-    workingDir = cwd
-} else {
-    workingDir = FileManager.default.currentDirectoryPath
 }
 
 let shouldBeInteractive = forceInteractive || promptArg == nil || promptArg?.isEmpty == true
@@ -440,7 +494,8 @@ if shouldBeInteractive {
         includeAppleTools: !noAppleTools,
         includeWebTools: !noWebTools,
         includeBrowserTools: !noBrowserTools,
-        verbose: verbose
+        verbose: verbose,
+        securityOptions: runtimeSecurityOptions
     )
 }
 

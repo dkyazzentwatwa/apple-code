@@ -152,18 +152,9 @@ struct RunCommandTool: Tool {
     private func appendAuditLog(command: String, decision: String, reason: String) {
         let dir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".apple-code")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let logURL = dir.appendingPathComponent("command_audit.log")
         let timestamp = ISO8601DateFormatter().string(from: Date())
-        let entry = "[\(timestamp)] \(decision) (\(reason)): \(command)\n"
-        if let data = entry.data(using: .utf8) {
-            if let fh = try? FileHandle(forWritingTo: logURL) {
-                fh.seekToEndOfFile()
-                fh.write(data)
-                try? fh.close()
-            } else {
-                try? data.write(to: logURL)
-            }
-        }
+        let safeCommand = PrivacyRedactor.shared.redactForLogs(command)
+        SecureLocalStore.appendPrivateLine("[\(timestamp)] \(decision) (\(reason)): \(safeCommand)\n", to: logURL)
     }
 }

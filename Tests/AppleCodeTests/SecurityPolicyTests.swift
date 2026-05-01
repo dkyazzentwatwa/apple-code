@@ -89,4 +89,36 @@ final class SecurityPolicyTests: XCTestCase {
         )
         XCTAssertNil(result)
     }
+
+    func testSecureProfileBlocksMutatingAppleBrowserAndGitActions() async throws {
+        ToolSafety.shared.configure(
+            ToolSafetyPolicy.make(
+                profile: .secure,
+                workingDirectory: FileManager.default.currentDirectoryPath,
+                additionalAllowedRoots: [],
+                allowedHosts: [],
+                allowPrivateNetwork: nil,
+                allowDangerousWithoutConfirmation: nil,
+                allowAutomaticFallbackExecution: nil
+            )
+        )
+
+        let notes = try await NotesTool().call(arguments: .init(action: "create", query: "Blocked", body: "test"))
+        XCTAssertTrue(notes.contains("blocked by security profile"), "Result was: \(notes)")
+
+        let browser = try await AgentBrowserTool().call(arguments: .init(
+            action: "click",
+            url: nil,
+            selector: "#submit",
+            text: nil,
+            key: nil,
+            path: nil,
+            session: nil,
+            timeoutSeconds: nil
+        ))
+        XCTAssertTrue(browser.contains("blocked by security profile"), "Result was: \(browser)")
+
+        let git = try await GitTool().call(arguments: .init(action: "commit", arg: "test"))
+        XCTAssertTrue(git.contains("blocked by security profile"), "Result was: \(git)")
+    }
 }

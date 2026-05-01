@@ -38,18 +38,9 @@ struct WriteFileTool: Tool {
     private func appendAuditLog(path: String, action: String) {
         let dir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".apple-code")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let logURL = dir.appendingPathComponent("command_audit.log")
         let timestamp = ISO8601DateFormatter().string(from: Date())
-        let entry = "[\(timestamp)] \(action): \(path)\n"
-        if let data = entry.data(using: .utf8) {
-            if let fh = try? FileHandle(forWritingTo: logURL) {
-                fh.seekToEndOfFile()
-                fh.write(data)
-                try? fh.close()
-            } else {
-                try? data.write(to: logURL)
-            }
-        }
+        let safePath = PrivacyRedactor.shared.redactForLogs(path)
+        SecureLocalStore.appendPrivateLine("[\(timestamp)] \(action): \(safePath)\n", to: logURL)
     }
 }

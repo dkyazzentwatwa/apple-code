@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/dkyazzentwatwa/apple-code/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/dkyazzentwatwa/apple-code/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
-  <img alt="Swift 6.2" src="https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white" />
+  <img alt="Swift 6.2+" src="https://img.shields.io/badge/Swift-6.2%2B-F05138?logo=swift&logoColor=white" />
   <img alt="macOS 26+" src="https://img.shields.io/badge/macOS-26%2B-000000?logo=apple&logoColor=white" />
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg" /></a>
 </p>
@@ -35,7 +35,7 @@
 
 - macOS 26+ (Tahoe) on Apple Silicon
 - Xcode 26+ command line tools
-- Swift toolchain with FoundationModels support
+- Swift 6.2+ toolchain with FoundationModels support
 - Ollama installed locally for `--provider ollama`
 
 ## Install
@@ -132,6 +132,7 @@ apple-code [options] ["prompt"]
 --allow-private-network Allow localhost/private network URLs
 --dangerous-without-confirm Allow dangerous mutating actions without extra gate
 --allow-fallback-execution  Allow automatic refusal fallback tool execution
+--privacy-redaction m  Redaction mode: off | logs | transcripts | all
 --verbose               Show full output (disable summary mode)
 -i, --interactive       Force interactive mode
 --resume <session-id>   Resume a session
@@ -187,6 +188,24 @@ Hotkeys:
 | Web | `webSearch`, `webFetch` |
 | Browser automation | `agentBrowser` |
 
+## Security Defaults
+
+`apple-code` runs in the `secure` profile by default. Filesystem tools are confined to the working directory plus any `--allow-path` roots, private network URLs are blocked, risky shell commands require opt-in, mutating Apple/browser/git actions are blocked unless `--dangerous-without-confirm` is set, and automatic fallback execution is disabled unless `--allow-fallback-execution` is set.
+
+Security and privacy settings can also live in `~/.apple-code/config` or project `.apple-code`:
+
+```text
+security_profile = secure
+allow_paths = /tmp,/Users/me/project
+allow_hosts = developer.apple.com
+allow_private_network = false
+dangerous_without_confirm = false
+allow_fallback_execution = false
+privacy_redaction = logs
+```
+
+Session, UI, and audit files under `~/.apple-code` are written with user-only file permissions. `privacy_redaction = logs` is the default; use `all` to redact transcripts before they are persisted.
+
 ## Troubleshooting
 
 Check installed binary:
@@ -222,9 +241,10 @@ swift build
 swift build -c release
 swift test
 ./scripts/coverage.sh
+./scripts/check.sh
 ```
 
-`./scripts/coverage.sh` enforces an 80% line-coverage gate on the unit-testable core modules and also prints full-project coverage for visibility.
+`./scripts/check.sh` is the local production gate. It runs build, tests, and coverage. `./scripts/coverage.sh` enforces an 80% line-coverage gate on the unit-testable core modules and also prints full-project coverage for visibility.
 
 ## License
 

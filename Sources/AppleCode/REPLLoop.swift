@@ -100,17 +100,20 @@ func runInteractiveREPL(
     includeAppleTools: Bool,
     includeWebTools: Bool,
     includeBrowserTools: Bool,
-    verbose: Bool
+    verbose: Bool,
+    securityOptions: RuntimeSecurityOptions
 ) async -> Never {
     let uiConfig = TUIConfig.default(verbose: verbose)
     UILogger.shared.configure(directory: uiConfig.logsDirectory)
     UILogger.shared.log("interactive session started id=\(session.id.uuidString)")
     var activeModelConfig = session.modelConfig ?? initialModelConfig
+    securityOptions.configureRuntime(workingDirectory: session.workingDir)
     if session.modelConfig == nil {
         session.modelConfig = activeModelConfig
     }
 
     let capabilities = TerminalCapabilities.detect()
+    let stdinIsTTY = isatty(STDIN_FILENO) == 1
     let supportsFramedUI = capabilities.supportsAdvancedUI && capabilities.supportsUnicode
     var uiMode = session.uiMode
     var useAdvancedUI = supportsFramedUI && uiMode == .framed
@@ -119,7 +122,7 @@ func runInteractiveREPL(
         ? TUIRenderer(theme: activeTheme, capabilities: capabilities)
         : nil
     var renderer: TUIRenderer? = useAdvancedUI ? introRenderer : nil
-    let composer = capabilities.supportsAdvancedUI ? InputComposer() : nil
+    let composer = stdinIsTTY && capabilities.supportsAdvancedUI ? InputComposer() : nil
     var uiState: UIState? = nil
     var viewport: ConversationViewport? = nil
     var streamState = "idle"
@@ -300,7 +303,12 @@ func runInteractiveREPL(
             }
         } else {
             printPrompt()
-            guard let submitted = readLine(strippingNewline: true), !submitted.isEmpty else {
+            guard let submitted = readLine(strippingNewline: true) else {
+                try? await SessionManager.shared.saveSession(session)
+                printMuted("\nSession saved: \(session.id.uuidString)\n")
+                exit(0)
+            }
+            guard !submitted.isEmpty else {
                 continue
             }
             line = submitted
@@ -428,6 +436,7 @@ func runInteractiveREPL(
                 do {
                     let loaded = try await SessionManager.shared.loadSession(id: id)
                     session = loaded
+                    securityOptions.configureRuntime(workingDirectory: session.workingDir)
                     if let pinned = session.modelConfig {
                         activeModelConfig = pinned
                     } else {
@@ -453,6 +462,7 @@ func runInteractiveREPL(
                 uiState = state
             } else if let loaded = await handleResumeSession(id: id) {
                 session = loaded
+                securityOptions.configureRuntime(workingDirectory: session.workingDir)
                 if let pinned = session.modelConfig {
                     activeModelConfig = pinned
                 } else {
@@ -664,6 +674,7 @@ func runInteractiveREPL(
             do {
                 let loaded = try await SessionManager.shared.loadSession(id: target.id)
                 session = loaded
+                securityOptions.configureRuntime(workingDirectory: session.workingDir)
                 if let pinned = session.modelConfig { activeModelConfig = pinned }
                 uiMode = session.uiMode
                 useAdvancedUI = supportsFramedUI && uiMode == .framed
@@ -705,9 +716,10 @@ func runInteractiveREPL(
             let expandedPath = (path as NSString).expandingTildeInPath
             if FileManager.default.fileExists(atPath: expandedPath) {
                 FileManager.default.changeCurrentDirectoryPath(expandedPath)
-                session.workingDir = expandedPath
+                session.workingDir = FileManager.default.currentDirectoryPath
+                securityOptions.configureRuntime(workingDirectory: session.workingDir)
                 if useAdvancedUI, let renderer, var state = uiState, let viewport {
-                    viewport.append(role: "system", content: "Changed directory to: \(expandedPath)")
+                    viewport.append(role: "system", content: "Changed directory to: \(session.workingDir)")
                     renderAdvancedShell(
                         renderer: renderer,
                         state: &state,
@@ -717,7 +729,7 @@ func runInteractiveREPL(
                     )
                     uiState = state
                 } else {
-                    printSuccess("Changed directory to: \(expandedPath)")
+                    printSuccess("Changed directory to: \(session.workingDir)")
                 }
             } else {
                 if useAdvancedUI, let renderer, var state = uiState, let viewport {
@@ -1981,16 +1993,17 @@ private func buildPromptWithMemory(userInput: String, priorMessages: [Message]) 
 }
 
 /// Loads APPLE-CODE.md or CLAUDE.md from the working directory as project context.
-/// Returns the content capped at 8000 characters, or nil if neither file exists.
+/// Returns the content capped for Apple's small local context window.
 func loadProjectContextFile(workingDir: String) -> String? {
+    let maxContextChars = 3_000
     let candidates = ["APPLE-CODE.md", "CLAUDE.md"]
     for name in candidates {
         let path = (workingDir as NSString).appendingPathComponent(name)
         if let content = try? String(contentsOfFile: path, encoding: .utf8) {
             let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty { continue }
-            if trimmed.count > 8000 {
-                return String(trimmed.prefix(8000)) + "\n... [truncated at 8000 chars]"
+            if trimmed.count > maxContextChars {
+                return String(trimmed.prefix(maxContextChars)) + "\n... [truncated at \(maxContextChars) chars]"
             }
             return trimmed
         }
