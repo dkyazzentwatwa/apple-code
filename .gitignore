@@ -24,3 +24,29 @@ DerivedData/
 *.log
 *.tmp
 *.temp
+
+# Local OS files
+.DS_Store
+
+# Generated dependencies and build outputs
+node_modules/
+build/
+dist/
+out/
+.next/
+.nuxt/
+.vite/
+.turbo/
+.vercel/
+coverage/
+.pio/
+.pioenvs/
+.piolibdeps/
+DerivedData/
+*.xcresult
+*.tsbuildinfo
+*.elf
+*.map
+*.hex
+*.log
+*.tmp
