@@ -3,11 +3,12 @@ import Foundation
 /// Manages conversation context budgets and rolling-window pruning.
 struct TokenBudgetManager {
     /// Approximate per-provider token limits.
-    /// AFM uses ~4096; Ollama defaults to 4096 but can be higher.
+    /// AFM uses ~4096; local/CLI providers can carry larger prompts.
     static func tokenBudget(for provider: ProviderKind) -> Int {
         switch provider {
         case .apple:  return 4096
         case .ollama: return 8192
+        case .codex:  return 32_000
         }
     }
 

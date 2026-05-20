@@ -3,7 +3,7 @@ set -euo pipefail
 
 PROFILE=""
 TEST_BIN=""
-CORE_IGNORE_REGEX='Sources/AppleCode/(REPLLoop\.swift|main\.swift|InputComposer\.swift|TUIRenderer\.swift|TUIUtils\.swift|ModelClient\.swift|Apple.*\.swift|WebFallback\.swift)|Sources/AppleCode/Tools/(AgentBrowserTool|CalendarTool|CreatePDFTool|MailTool|MessagesTool|NotesTool|RemindersTool|WebFetchTool|WebSearchTool)\.swift|\.build/|Tests/'
+CORE_IGNORE_REGEX='Sources/AppleCode/(REPLLoop\.swift|main\.swift|InputComposer\.swift|TUIRenderer\.swift|TUIUtils\.swift|ModelClient\.swift|CodexModelClient\.swift|Apple.*\.swift|WebFallback\.swift)|Sources/AppleCode/Tools/(AgentBrowserTool|CalendarTool|CreatePDFTool|MailTool|MessagesTool|NotesTool|RemindersTool|WebFetchTool|WebSearchTool)\.swift|\.build/|Tests/'
 
 swift test --enable-code-coverage
 

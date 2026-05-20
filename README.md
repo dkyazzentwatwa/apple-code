@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  Local-first coding shell for Apple Foundation Models and Ollama.
+  Local-first coding shell for Apple Foundation Models, Ollama, and Codex CLI.
 </p>
 
 <p align="center">
@@ -20,13 +20,14 @@
   <img src="assets/apple-code2.png" alt="apple-code screenshot 2" width="48%" />
 </p>
 
-`apple-code` is a Swift CLI assistant for local coding workflows on macOS. It runs on-device with Apple Foundation Models by default, and can switch to local Ollama models (including Qwen variants) with no cloud API dependency.
+`apple-code` is a Swift CLI assistant for local coding workflows on macOS. It runs on-device with Apple Foundation Models by default, can switch to local Ollama models, and can delegate heavier coding turns to the authenticated Codex CLI.
 
 ## Highlights
 
-- Local providers only: `apple` and `ollama`
+- Provider choices: `apple`, `ollama`, and `codex`
 - Fast settings menu in REPL: `/settings` or `Ctrl+P`
 - Dynamic local Ollama model picker using `ollama list`
+- Codex CLI handoff with `/codex` or `--provider codex`
 - Tool-calling support for filesystem, shell, web, browser, PDF, and Apple apps
 - Session persistence, transcript history, and quick session switching
 - Two UI modes (`classic`, `framed`) and multiple built-in themes
@@ -37,6 +38,7 @@
 - Xcode 26+ command line tools
 - Swift 6.2+ toolchain with FoundationModels support
 - Ollama installed locally for `--provider ollama`
+- Codex CLI installed and logged in for `--provider codex`
 
 ## Install
 
@@ -104,6 +106,24 @@ ollama pull qwen3.5:4b
 
 In REPL, `/settings` can prompt and run pulls for you.
 
+### Codex CLI
+
+```bash
+export CODEX_MODEL="gpt-5.2" # optional
+
+apple-code --provider codex "review this repo"
+apple-code --provider codex --model gpt-5.2 "make a plan for this bug"
+```
+
+In REPL:
+
+```text
+/codex
+/codex inspect the current working tree and suggest the next fix
+```
+
+`/codex` without a prompt switches the active provider to Codex. `/codex <prompt>` runs a one-off Codex turn in the current session. Codex execution uses `codex exec`, the current working directory, `--color never`, and a sandbox derived from apple-code's security profile.
+
 ## CLI Options
 
 ```text
@@ -111,8 +131,8 @@ apple-code [options] ["prompt"]
 
 --system "..."          Custom system instructions
 --cwd /path/to/dir      Working directory for file/command tools
---provider <name>       Model provider: apple | ollama
---model <id>            Model ID (ollama)
+--provider <name>       Model provider: apple | ollama | codex
+--model <id>            Model ID (ollama/codex)
 --base-url <url>        Base URL for ollama (default: http://127.0.0.1:11434)
 --ui <mode>             UI mode: classic | framed
 --timeout N             Max seconds (default: 120)
@@ -155,6 +175,7 @@ Core:
 Settings and model control:
 
 - `/settings`
+- `/codex [prompt]`
 - `/model`, `/m`
 - `/ui [classic|framed]`
 - `/theme <wow|minimal|classic|solar|ocean|forest>`
@@ -230,9 +251,23 @@ curl http://127.0.0.1:11434/api/tags
 
 If `--provider ollama` fails:
 
-- Confirm Ollama is running locally
+- Confirm Ollama is running locally with `ollama serve`
 - Verify model exists with `ollama list`
 - Set `OLLAMA_BASE_URL` if using a non-default host/port
+
+Validate Codex CLI:
+
+```bash
+which codex
+codex --version
+codex login status
+```
+
+If `--provider codex` fails:
+
+- Confirm Codex is installed and on `PATH`
+- Confirm you are logged in with `codex login`
+- Try the same prompt directly with `printf '%s\n' "hello" | codex exec --cd "$PWD" --color never -`
 
 ## Development
 

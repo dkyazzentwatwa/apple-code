@@ -1,12 +1,13 @@
 # apple-code
 
-Swift 6.2+ CLI coding assistant. macOS 26+, no external dependencies.
+Swift 6.2+ CLI coding assistant. macOS 26+, no package dependencies.
 
 ## Key files
 - `Sources/AppleCode/main.swift` — CLI args, `routeTools()`
 - `Sources/AppleCode/REPLLoop.swift` — interactive REPL loop
 - `Sources/AppleCode/ToolBridge.swift` — tool schemas + invoke switch
-- `Sources/AppleCode/ModelClient.swift` — AFM + Ollama clients
+- `Sources/AppleCode/ModelClient.swift` — provider factory
+- `Sources/AppleCode/CodexModelClient.swift` — Codex CLI provider wrapper
 - `Sources/AppleCode/Tools/` — one file per tool
 
 ## Adding a tool
@@ -18,6 +19,7 @@ Swift 6.2+ CLI coding assistant. macOS 26+, no external dependencies.
 ## Conventions
 - Swift 6 strict concurrency — all shared state must be Sendable
 - No third-party packages
+- Providers are selected through `ModelConfig` (`apple`, `ollama`, `codex`)
 - `swift build` must be clean (no warnings promoted to errors)
 - 80% test coverage gate: `swift test`
 

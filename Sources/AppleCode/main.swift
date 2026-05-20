@@ -3,15 +3,15 @@ import FoundationModels
 
 func printUsage() {
     print("""
-    apple-code - Local AI coding assistant with Apple Foundation Models and Ollama
+    apple-code - Local AI coding assistant with Apple Foundation Models, Ollama, and Codex CLI
 
     Usage: apple-code [options] ["prompt"]
 
     Options:
       --system "..."          Custom system instructions (overrides config file)
       --cwd /path/to/dir     Working directory for file/command tools
-      --provider <name>      Model provider: apple | ollama (overrides config file)
-      --model <id>           Model ID (ollama, overrides config file)
+      --provider <name>      Model provider: apple | ollama | codex (overrides config file)
+      --model <id>           Model ID (ollama/codex, overrides config file)
       --base-url <url>       Base URL for ollama (default: http://127.0.0.1:11434)
       --ui <mode>            UI mode: classic | framed
       --timeout N            Max seconds (default: 120)
@@ -58,6 +58,7 @@ func printUsage() {
       /show <id>            Show full transcript entry by ID
       /model, /m            Show model info
       /settings             Open settings menu (provider/model/ui/theme/session)
+      /codex [prompt]       Switch to Codex or run a one-off Codex prompt
       /compact              Summarize old turns to free context window
       /ui [mode]            Switch UI mode (classic, framed)
       /session ...          Quick session switch (next, prev, id)
@@ -73,6 +74,7 @@ func printUsage() {
       apple-code
       apple-code --cwd ~/projects/myapp
       apple-code --provider ollama --model qwen3.5:4b
+      apple-code --provider codex --model gpt-5.2
 
       # One-off mode
       apple-code "List files in current directory"
@@ -243,6 +245,8 @@ private func effectiveResponseTimeout(for config: ModelConfig, requestedSeconds:
     case .apple:
         return requested
     case .ollama:
+        return max(300, requested)
+    case .codex:
         return max(300, requested)
     }
 }
@@ -546,7 +550,7 @@ Use this sequence for web interaction: open -> snapshot -> interact -> snapshot.
 }
 defaultPreamble += """
 
-For shell/terminal requests, use the runCommand tool instead of saying you cannot execute commands.
+For shell/terminal requests, use the available command tool or provider-native command execution instead of saying you cannot execute commands.
 """
 let instructions = systemInstructions.map { "\(defaultPreamble)\n\($0)" } ?? defaultPreamble
 

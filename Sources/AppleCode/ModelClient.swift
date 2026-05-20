@@ -82,6 +82,10 @@ func makeModelClient(
             throw ModelClientFactoryError.invalidBaseURL
         }
         return OllamaModelClient(config: config, model: model, baseURL: baseURL)
+
+    case .codex:
+        let model = config.model?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return CodexModelClient(config: config, model: model)
     }
 }
 
@@ -91,19 +95,22 @@ enum ModelClientFactoryError: LocalizedError {
     case invalidBaseURL
     case modelNotInstalled(model: String)
     case ollamaUnavailable(String)
+    case codexUnavailable(String)
 
     var errorDescription: String? {
         switch self {
         case .appleUnavailable:
             return "Apple Foundation Models not available. Requires macOS 26+ on Apple Silicon."
         case .missingModel:
-            return "Ollama requires a model. Select one in /settings or set --model / OLLAMA_MODEL."
+            return "Ollama requires a model. Select one in /settings, pass --model, or set OLLAMA_MODEL."
         case .invalidBaseURL:
             return "Ollama base URL is invalid."
         case .modelNotInstalled(let model):
             return "Model '\(model)' is not installed locally. Run: ollama pull \(model)"
         case .ollamaUnavailable(let detail):
-            return "Ollama is unavailable: \(detail)"
+            return "Ollama is unavailable: \(detail). Start it with: ollama serve"
+        case .codexUnavailable(let detail):
+            return "Codex CLI is unavailable: \(detail). Install or log in with: codex login"
         }
     }
 }

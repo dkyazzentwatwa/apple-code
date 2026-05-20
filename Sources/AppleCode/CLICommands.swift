@@ -13,6 +13,7 @@ enum CLICommand {
     case showModel
     case setUI(String?)
     case openSettings
+    case codex(String?)
     case switchSession(String?)
     case changeDirectory(String)
     case clear
@@ -67,6 +68,8 @@ func parseCommand(_ input: String) -> CLICommand {
         return .setUI(arg.isEmpty ? nil : arg)
     case "settings":
         return .openSettings
+    case "codex":
+        return .codex(arg.isEmpty ? nil : arg)
     case "session":
         return .switchSession(arg.isEmpty ? nil : arg)
     case "cd":
@@ -97,6 +100,7 @@ func printHelp() {
     \(TUI.promptColor)/show <id>\(TUI.reset)        Show full entry by transcript ID
     \(TUI.promptColor)/model\(TUI.reset) (or /m)     Show current model info
     \(TUI.promptColor)/settings\(TUI.reset)          Open settings menu (provider/model/ui/theme/session)
+    \(TUI.promptColor)/codex [prompt]\(TUI.reset)    Switch to Codex or run a one-off Codex prompt
     \(TUI.promptColor)/ui [classic|framed]\(TUI.reset)  Switch REPL renderer mode
     \(TUI.promptColor)/session <id|next|prev>\(TUI.reset) Quick switch session
     \(TUI.promptColor)/cd <path>\(TUI.reset)        Change working directory
@@ -110,7 +114,7 @@ func printHelp() {
 
     \(TUI.mutedColor)Keys: Enter submit, Ctrl+J newline, arrows navigate history/edit.\(TUI.reset)
     \(TUI.mutedColor)Keys: Ctrl+P settings • Esc(Ctrl+[) prev session • Ctrl+] next session.\(TUI.reset)
-    \(TUI.mutedColor)Provider: apple (AFM) or ollama (local) via /settings.\(TUI.reset)
+    \(TUI.mutedColor)Provider: apple (AFM), ollama (local), or codex (CLI) via /settings.\(TUI.reset)
     \(TUI.mutedColor)Tip: Just type a message to chat. The AI will use tools when needed.\(TUI.reset)
     """)
 }

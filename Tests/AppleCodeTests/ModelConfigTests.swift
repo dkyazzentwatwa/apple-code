@@ -44,6 +44,48 @@ final class ModelConfigTests: XCTestCase {
         XCTAssertEqual(config.baseURL, "http://localhost:11435")
     }
 
+    func testResolveCodexProviderWithModelFlag() throws {
+        let config = try ModelConfig.resolve(
+            providerFlag: "codex-cli",
+            modelFlag: "gpt-5.2",
+            baseURLFlag: nil,
+            env: [:]
+        )
+
+        XCTAssertEqual(config.provider, .codex)
+        XCTAssertEqual(config.model, "gpt-5.2")
+        XCTAssertNil(config.baseURL)
+    }
+
+    func testResolveCodexReadsEnvironmentModel() throws {
+        let config = try ModelConfig.resolve(
+            providerFlag: "codex",
+            modelFlag: nil,
+            baseURLFlag: nil,
+            env: ["CODEX_MODEL": "gpt-5.4-mini"]
+        )
+
+        XCTAssertEqual(config.provider, .codex)
+        XCTAssertEqual(config.model, "gpt-5.4-mini")
+        XCTAssertNil(config.baseURL)
+    }
+
+    func testResolveRejectsBaseURLForCodex() {
+        XCTAssertThrowsError(
+            try ModelConfig.resolve(
+                providerFlag: "codex",
+                modelFlag: nil,
+                baseURLFlag: "http://127.0.0.1:11434",
+                env: [:]
+            )
+        ) { error in
+            guard case ModelConfigError.codexDoesNotUseRemoteBaseURL = error else {
+                XCTFail("Expected codexDoesNotUseRemoteBaseURL, got: \(error)")
+                return
+            }
+        }
+    }
+
     func testResolveRejectsRemoteFlagsForApple() {
         XCTAssertThrowsError(
             try ModelConfig.resolve(
@@ -94,7 +136,7 @@ final class ModelConfigTests: XCTestCase {
 
     func testErrorDescriptionsCoverSpecialCases() {
         XCTAssertTrue(
-            ModelConfigError.invalidProvider("openai-compatible").localizedDescription.contains("removed")
+            ModelConfigError.invalidProvider("openai-compatible").localizedDescription.contains("codex")
         )
         XCTAssertTrue(
             ModelConfigError.missingModel.localizedDescription.contains("requires a model")

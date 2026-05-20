@@ -54,6 +54,22 @@ final class CLICommandsTests: XCTestCase {
         }
     }
 
+    func testParseCodexCommandWithAndWithoutPrompt() {
+        switch parseCommand("/codex") {
+        case .codex(let prompt):
+            XCTAssertNil(prompt)
+        default:
+            XCTFail("Expected codex(nil)")
+        }
+
+        switch parseCommand("/codex explain this repo") {
+        case .codex(let prompt):
+            XCTAssertEqual(prompt, "explain this repo")
+        default:
+            XCTFail("Expected codex prompt")
+        }
+    }
+
     func testParseNonCommandInputReturnsNone() {
         assertIsNone(parseCommand("just chat"))
     }

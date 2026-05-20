@@ -210,7 +210,7 @@ func runInteractiveREPL(
     }
     basePreamble += """
 
-    For shell/terminal requests, use the runCommand tool instead of saying you cannot execute commands.
+    For shell/terminal requests, use the available command tool or provider-native command execution instead of saying you cannot execute commands.
     """
 
     /// Compute current instructions, injecting the live working dir and project context.
@@ -628,6 +628,80 @@ func runInteractiveREPL(
                 try await SessionManager.shared.saveSession(session)
             } catch {
                 printWarning("Failed to persist UI mode: \(error.localizedDescription)")
+            }
+            continue
+
+        case .codex(let rawPrompt):
+            let trimmedPrompt = rawPrompt?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let codexConfig: ModelConfig
+            do {
+                codexConfig = try ModelConfig.resolve(
+                    providerFlag: "codex",
+                    modelFlag: activeModelConfig.provider == .codex ? activeModelConfig.model : nil,
+                    baseURLFlag: nil
+                )
+            } catch {
+                printError(error.localizedDescription)
+                continue
+            }
+
+            if trimmedPrompt.isEmpty {
+                activeModelConfig = codexConfig
+                session.modelConfig = activeModelConfig
+                let msg = "Provider switched to Codex CLI."
+                if useAdvancedUI, let renderer, var state = uiState, let viewport {
+                    viewport.append(role: "system", content: msg)
+                    renderAdvancedShell(renderer: renderer, state: &state, viewport: viewport, cwd: session.workingDir, mode: activeModelConfig.modeLabel, modelConfig: activeModelConfig, uiMode: uiMode, streamState: streamState, contextMeter: conversationContextMeter(session: session), toolTimeline: toolTimeline, streamingPreview: streamingPreview, sessions: recentSessions, selectedSessionChipIndex: selectedSessionChipIndex)
+                    uiState = state
+                } else {
+                    printSuccess(msg)
+                }
+                try? await SessionManager.shared.saveSession(session)
+                continue
+            }
+
+            if useAdvancedUI, let renderer, var state = uiState, let viewport {
+                viewport.append(role: "you", content: "/codex \(trimmedPrompt)")
+                renderAdvancedShell(renderer: renderer, state: &state, viewport: viewport, cwd: session.workingDir, mode: activeModelConfig.modeLabel, modelConfig: activeModelConfig, uiMode: uiMode, streamState: "codex", contextMeter: conversationContextMeter(session: session), toolTimeline: toolTimeline, streamingPreview: streamingPreview, sessions: recentSessions, selectedSessionChipIndex: selectedSessionChipIndex)
+                uiState = state
+            }
+
+            let codexPrompt = buildPromptWithMemory(userInput: trimmedPrompt, priorMessages: session.messages)
+            session.addMessage(role: "user", content: "/codex \(trimmedPrompt)")
+            startSpinner(message: "Codex", delayMs: uiConfig.spinnerDelayMs)
+            streamState = "codex"
+            do {
+                let codexClient = try makeModelClient(config: codexConfig)
+                let response = try await codexClient.respond(
+                    prompt: codexPrompt,
+                    tools: [],
+                    instructions: buildInstructions()
+                )
+                let _ = stopSpinner()
+                streamState = "idle"
+                session.addMessage(role: "assistant", content: response)
+                if useAdvancedUI, let renderer, var state = uiState, let viewport {
+                    viewport.append(role: "assistant", content: response)
+                    renderAdvancedShell(renderer: renderer, state: &state, viewport: viewport, cwd: session.workingDir, mode: activeModelConfig.modeLabel, modelConfig: activeModelConfig, uiMode: uiMode, streamState: streamState, contextMeter: conversationContextMeter(session: session), toolTimeline: toolTimeline, streamingPreview: streamingPreview, sessions: recentSessions, selectedSessionChipIndex: selectedSessionChipIndex)
+                    uiState = state
+                } else {
+                    printAssistantMessage(response, verbose: true)
+                    print()
+                }
+                try? await SessionManager.shared.saveSession(session)
+                recentSessions = await SessionManager.shared.listSessions()
+            } catch {
+                let _ = stopSpinner()
+                streamState = "error"
+                let msg = "Codex failed: \(error.localizedDescription)"
+                session.addMessage(role: "assistant", content: "Error: \(msg)")
+                if useAdvancedUI, let renderer, var state = uiState, let viewport {
+                    viewport.append(role: "error", content: msg)
+                    renderAdvancedShell(renderer: renderer, state: &state, viewport: viewport, cwd: session.workingDir, mode: activeModelConfig.modeLabel, modelConfig: activeModelConfig, uiMode: uiMode, streamState: streamState, contextMeter: conversationContextMeter(session: session), toolTimeline: toolTimeline, streamingPreview: streamingPreview, sessions: recentSessions, selectedSessionChipIndex: selectedSessionChipIndex)
+                    uiState = state
+                } else {
+                    printError(msg)
+                }
             }
             continue
 
@@ -1468,7 +1542,7 @@ private func openSettingsMenu(
     selectedSessionChipIndex: inout Int
 ) async {
     let options = [
-        "Switch Provider",
+        "Select Provider",
         "Select Ollama Model",
         "Pull Recommended Qwen Model",
         "Toggle UI Mode",
@@ -1500,36 +1574,60 @@ private func openSettingsMenu(
     guard let selectedIndex else { return }
     switch selectedIndex {
     case 0:
-        if activeModelConfig.provider == .apple {
+        let providerOptions = [
+            "Apple Foundation Models",
+            "Ollama",
+            "Codex CLI",
+        ]
+        let providerIdx = readMenuSelection(composer: composer, title: "Select Provider", options: providerOptions)
+        guard let providerIdx, providerOptions.indices.contains(providerIdx) else { break }
+
+        switch providerIdx {
+        case 0:
+            activeModelConfig = .appleDefault
+            session.modelConfig = activeModelConfig
+        case 1:
             let envBase = ProcessInfo.processInfo.environment["OLLAMA_BASE_URL"]?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let baseURL = (envBase?.isEmpty == false) ? (envBase ?? "http://127.0.0.1:11434") : "http://127.0.0.1:11434"
             let normalized = try? ModelConfig.normalizeBaseURL(baseURL)
-            let installed = await OllamaModelDiscovery.installedModels(baseURL: normalized ?? URL(string: "http://127.0.0.1:11434")!)
-            if let preferred = OllamaModelDiscovery.preferredDefaultModel(from: installed) {
+            let status = await OllamaModelDiscovery.discoveryStatus(baseURL: normalized ?? URL(string: "http://127.0.0.1:11434")!)
+            printMuted(status.message)
+            if let preferred = OllamaModelDiscovery.preferredDefaultModel(from: status.installedModels) {
                 activeModelConfig = ModelConfig(provider: .ollama, model: preferred, baseURL: normalized?.absoluteString ?? baseURL)
                 session.modelConfig = activeModelConfig
             } else {
-                if promptYesNo("No local Ollama models found. Pull qwen3.5:4b now? [y/N] ") {
-                    if runOllamaPull(model: "qwen3.5:4b") {
-                        activeModelConfig = ModelConfig(provider: .ollama, model: "qwen3.5:4b", baseURL: normalized?.absoluteString ?? baseURL)
+                if promptYesNo("No local Ollama models found. Pull qwen3.5:9b now? [y/N] ") {
+                    if runOllamaPull(model: "qwen3.5:9b") {
+                        activeModelConfig = ModelConfig(provider: .ollama, model: "qwen3.5:9b", baseURL: normalized?.absoluteString ?? baseURL)
                         session.modelConfig = activeModelConfig
                     }
                 }
             }
-        } else {
-            activeModelConfig = .appleDefault
+        case 2:
+            let codexModel = ProcessInfo.processInfo.environment["CODEX_MODEL"]?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            activeModelConfig = ModelConfig(
+                provider: .codex,
+                model: codexModel?.isEmpty == false ? codexModel : nil,
+                baseURL: nil
+            )
             session.modelConfig = activeModelConfig
+        default:
+            break
         }
     case 1:
         let rawBaseURL = activeModelConfig.baseURL ?? ProcessInfo.processInfo.environment["OLLAMA_BASE_URL"] ?? "http://127.0.0.1:11434"
         guard let baseURL = URL(string: rawBaseURL) else { break }
-        let installed = await OllamaModelDiscovery.installedModels(baseURL: baseURL)
-        let combined = Array(Set(installed + OllamaModelDiscovery.recommendedQwenModels)).sorted()
-        guard !combined.isEmpty else { break }
-        let modelIdx = readMenuSelection(composer: composer, title: "Select Ollama Model", options: combined)
-        if let modelIdx, combined.indices.contains(modelIdx) {
-            activeModelConfig = ModelConfig(provider: .ollama, model: combined[modelIdx], baseURL: rawBaseURL)
+        let status = await OllamaModelDiscovery.discoveryStatus(baseURL: baseURL)
+        printMuted(status.message)
+        guard !status.installedModels.isEmpty else {
+            printMuted("No installed models to select. Use Pull Recommended Qwen Model first.")
+            break
+        }
+        let modelIdx = readMenuSelection(composer: composer, title: "Installed Ollama Models", options: status.installedModels)
+        if let modelIdx, status.installedModels.indices.contains(modelIdx) {
+            activeModelConfig = ModelConfig(provider: .ollama, model: status.installedModels[modelIdx], baseURL: rawBaseURL)
             session.modelConfig = activeModelConfig
         }
     case 2:
@@ -1649,6 +1747,8 @@ private func effectiveResponseTimeout(for config: ModelConfig, requestedSeconds:
         return requested
     case .ollama:
         // Local Ollama models (especially larger ones) can legitimately take longer.
+        return max(300, requested)
+    case .codex:
         return max(300, requested)
     }
 }
@@ -1859,6 +1959,7 @@ private func helpTextForViewport() -> String {
     /show <id>       Show full transcript entry by ID
     /model (/m)      Show model info
     /settings        Open settings menu (provider/model/ui/theme/session)
+    /codex [prompt]  Switch to Codex or run one Codex prompt
     /ui [mode]       Set UI mode (classic, framed)
     /session ...     Session quick switch (next, prev, id-prefix)
     /cd <path>       Change working directory

@@ -4,6 +4,13 @@ All notable changes to apple-code are documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Codex CLI provider** — `--provider codex` now delegates prompts to `codex exec`, supports optional `--model` / `CODEX_MODEL`, and maps apple-code security profiles to Codex sandbox modes.
+- **REPL Codex shortcut** — `/codex` switches the active provider to Codex, while `/codex <prompt>` runs a one-off Codex turn inside the current session.
+
+### Changed
+- **Ollama discovery UX** — Model selection now prefers coding-capable local models (`qwen3.5:9b`, `qwen3.5:4b`, `qwen2.5-coder:*`) and reports when `ollama list` can see models but the local API needs `ollama serve`.
+
 ### Fixed
 - **Ollama URL contract tests** — `ModelConfigTests` now assert native Ollama base URLs without an implicit `/v1` suffix, matching the runtime's `/api/chat` and `/api/tags` requests.
 

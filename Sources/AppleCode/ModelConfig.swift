@@ -3,6 +3,7 @@ import Foundation
 enum ProviderKind: String, Codable, Sendable {
     case apple
     case ollama
+    case codex
 
     init?(rawCLIValue: String) {
         let normalized = rawCLIValue
@@ -13,6 +14,8 @@ enum ProviderKind: String, Codable, Sendable {
             self = .apple
         case "ollama", "local-ollama":
             self = .ollama
+        case "codex", "codex-cli":
+            self = .codex
         default:
             return nil
         }
@@ -24,6 +27,8 @@ enum ProviderKind: String, Codable, Sendable {
             return "apple"
         case .ollama:
             return "ollama"
+        case .codex:
+            return "codex"
         }
     }
 }
@@ -42,6 +47,8 @@ struct ModelConfig: Codable, Sendable {
             return "on-device"
         case .ollama:
             return "ollama"
+        case .codex:
+            return "codex"
         }
     }
 
@@ -61,7 +68,9 @@ struct ModelConfig: Codable, Sendable {
                 throw ModelConfigError.invalidProvider(value)
             }
             provider = parsed
-        } else if (trimmedModel?.isEmpty == false) || (trimmedBaseURL?.isEmpty == false) {
+        } else if trimmedBaseURL?.isEmpty == false {
+            provider = .ollama
+        } else if trimmedModel?.isEmpty == false {
             provider = .ollama
         } else {
             provider = .apple
@@ -86,6 +95,16 @@ struct ModelConfig: Codable, Sendable {
                 provider: .ollama,
                 model: effectiveModel,
                 baseURL: normalizedBaseURL.absoluteString
+            )
+
+        case .codex:
+            if trimmedBaseURL?.isEmpty == false {
+                throw ModelConfigError.codexDoesNotUseRemoteBaseURL
+            }
+            return ModelConfig(
+                provider: .codex,
+                model: nonEmpty(trimmedModel) ?? nonEmpty(env["CODEX_MODEL"]),
+                baseURL: nil
             )
         }
     }
@@ -129,20 +148,23 @@ enum ModelConfigError: LocalizedError {
     case invalidBaseURL(String)
     case missingModel
     case appleDoesNotUseRemoteModelFlags
+    case codexDoesNotUseRemoteBaseURL
 
     var errorDescription: String? {
         switch self {
         case .invalidProvider(let value):
             if value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "openai-compatible" {
-                return "Provider 'openai-compatible' was removed. Use 'ollama' (local) or 'apple' (AFM)."
+                return "Provider 'openai-compatible' was removed. Use 'codex', 'ollama' (local), or 'apple' (AFM)."
             }
-            return "Invalid provider '\(value)'. Use 'apple' or 'ollama'."
+            return "Invalid provider '\(value)'. Use 'apple', 'ollama', or 'codex'."
         case .invalidBaseURL(let value):
             return "Invalid base URL '\(value)'. Use a valid http or https URL."
         case .missingModel:
             return "Ollama provider requires a model. Set --model or OLLAMA_MODEL."
         case .appleDoesNotUseRemoteModelFlags:
-            return "--model/--base-url can only be used with --provider ollama."
+            return "--base-url can only be used with --provider ollama. --model is supported by ollama and codex."
+        case .codexDoesNotUseRemoteBaseURL:
+            return "--base-url can only be used with --provider ollama; Codex CLI uses your local Codex config."
         }
     }
 }

@@ -34,8 +34,8 @@ swift build -c release
 apple-code [options] ["prompt"]
   --system "..."       Custom system instructions
   --cwd /path/to/dir  Working directory for file/command tools
-  --provider <name>    Model provider: apple | ollama
-  --model <id>         Model ID for Ollama
+  --provider <name>    Model provider: apple | ollama | codex
+  --model <id>         Model ID for Ollama or Codex
   --timeout N          Max seconds (default: 120)
   --security-profile p Security profile: secure | balanced | compatibility
   --allow-path /path   Additional allowed filesystem root (repeatable)
