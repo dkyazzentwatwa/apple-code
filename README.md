@@ -25,7 +25,7 @@
 ## Highlights
 
 - Provider choices: `apple`, `ollama`, and `codex`
-- Fast settings menu in REPL: `/settings` or `Ctrl+P`
+- Fast settings menu in REPL: `/settings` or `Ctrl+P`, including provider switching
 - Dynamic local Ollama model picker using `ollama list`
 - Codex CLI handoff with `/codex` or `--provider codex`
 - Tool-calling support for filesystem, shell, web, browser, PDF, and Apple apps
@@ -118,11 +118,12 @@ apple-code --provider codex --model gpt-5.2 "make a plan for this bug"
 In REPL:
 
 ```text
+/settings -> Select Provider -> Codex CLI
 /codex
 /codex inspect the current working tree and suggest the next fix
 ```
 
-`/codex` without a prompt switches the active provider to Codex. `/codex <prompt>` runs a one-off Codex turn in the current session. Codex execution uses `codex exec`, the current working directory, `--color never`, and a sandbox derived from apple-code's security profile.
+Use `/settings -> Select Provider -> Codex CLI` to make Codex the active TUI provider. `/codex` without a prompt is the shortcut for the same switch, and `/codex <prompt>` runs a one-off Codex turn in the current session. Codex execution uses `codex exec`, the current working directory, `--color never`, and a sandbox derived from apple-code's security profile.
 
 ## CLI Options
 
@@ -174,7 +175,7 @@ Core:
 
 Settings and model control:
 
-- `/settings`
+- `/settings` - provider picker for Apple Foundation Models, Ollama, and Codex CLI
 - `/codex [prompt]`
 - `/model`, `/m`
 - `/ui [classic|framed]`
