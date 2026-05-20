@@ -108,11 +108,12 @@ In REPL, `/settings` can prompt and run pulls for you.
 
 ### Codex CLI
 
-```bash
-export CODEX_MODEL="gpt-5.2" # optional
+Codex defaults to `gpt-5.4`. Override it with `--model` or `CODEX_MODEL`:
 
+```bash
+export CODEX_MODEL="gpt-5.4"
 apple-code --provider codex "review this repo"
-apple-code --provider codex --model gpt-5.2 "make a plan for this bug"
+apple-code --provider codex --model gpt-5.4 "make a plan for this bug"
 ```
 
 In REPL:

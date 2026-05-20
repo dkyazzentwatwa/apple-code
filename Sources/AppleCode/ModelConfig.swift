@@ -40,6 +40,7 @@ struct ModelConfig: Codable, Sendable {
 
     static let appleDefault = ModelConfig(provider: .apple, model: nil, baseURL: nil)
     static let defaultOllamaBaseURL = "http://127.0.0.1:11434"
+    static let defaultCodexModel = "gpt-5.4"
 
     var modeLabel: String {
         switch provider {
@@ -103,7 +104,7 @@ struct ModelConfig: Codable, Sendable {
             }
             return ModelConfig(
                 provider: .codex,
-                model: nonEmpty(trimmedModel) ?? nonEmpty(env["CODEX_MODEL"]),
+                model: nonEmpty(trimmedModel) ?? nonEmpty(env["CODEX_MODEL"]) ?? defaultCodexModel,
                 baseURL: nil
             )
         }

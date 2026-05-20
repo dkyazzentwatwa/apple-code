@@ -1605,14 +1605,10 @@ private func openSettingsMenu(
                 }
             }
         case 2:
-            let codexModel = ProcessInfo.processInfo.environment["CODEX_MODEL"]?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            activeModelConfig = ModelConfig(
-                provider: .codex,
-                model: codexModel?.isEmpty == false ? codexModel : nil,
-                baseURL: nil
-            )
-            session.modelConfig = activeModelConfig
+            if let codexConfig = try? ModelConfig.resolve(providerFlag: "codex", modelFlag: nil, baseURLFlag: nil) {
+                activeModelConfig = codexConfig
+                session.modelConfig = activeModelConfig
+            }
         default:
             break
         }

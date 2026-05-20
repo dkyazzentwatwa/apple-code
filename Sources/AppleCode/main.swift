@@ -74,7 +74,7 @@ func printUsage() {
       apple-code
       apple-code --cwd ~/projects/myapp
       apple-code --provider ollama --model qwen3.5:4b
-      apple-code --provider codex --model gpt-5.2
+      apple-code --provider codex --model gpt-5.4
 
       # One-off mode
       apple-code "List files in current directory"

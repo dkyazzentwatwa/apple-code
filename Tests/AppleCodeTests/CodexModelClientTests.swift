@@ -60,7 +60,8 @@ final class CodexModelClientTests: XCTestCase {
         let args = await runner.arguments
         XCTAssertTrue(args.contains("--sandbox"))
         XCTAssertTrue(args.contains("workspace-write"))
-        XCTAssertFalse(args.contains("--model"))
+        XCTAssertTrue(args.contains("--model"))
+        XCTAssertTrue(args.contains("gpt-5.4"))
     }
 
     func testCodexClientReportsProcessFailure() async {

@@ -72,6 +72,7 @@ struct CodexModelClient: ModelClient {
     ) {
         self.config = config
         self.model = model?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            ?? ModelConfig.defaultCodexModel
         self.runner = runner
     }
 
@@ -130,7 +131,7 @@ struct CodexModelClient: ModelClient {
     func statusLines() -> [String] {
         var lines = [
             "Provider: codex",
-            "Model: \(model ?? "Codex default")",
+            "Model: \(model ?? ModelConfig.defaultCodexModel)",
             "Sandbox: \(codexSandboxMode())",
         ]
         if let version = Self.codexVersion() {

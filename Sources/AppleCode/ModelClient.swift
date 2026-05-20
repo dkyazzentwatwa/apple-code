@@ -84,7 +84,8 @@ func makeModelClient(
         return OllamaModelClient(config: config, model: model, baseURL: baseURL)
 
     case .codex:
-        let model = config.model?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedModel = config.model?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let model = (trimmedModel?.isEmpty == false ? trimmedModel : nil) ?? ModelConfig.defaultCodexModel
         return CodexModelClient(config: config, model: model)
     }
 }

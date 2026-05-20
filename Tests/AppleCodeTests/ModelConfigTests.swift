@@ -70,6 +70,19 @@ final class ModelConfigTests: XCTestCase {
         XCTAssertNil(config.baseURL)
     }
 
+    func testResolveCodexUsesDefaultModel() throws {
+        let config = try ModelConfig.resolve(
+            providerFlag: "codex",
+            modelFlag: nil,
+            baseURLFlag: nil,
+            env: [:]
+        )
+
+        XCTAssertEqual(config.provider, .codex)
+        XCTAssertEqual(config.model, "gpt-5.4")
+        XCTAssertNil(config.baseURL)
+    }
+
     func testResolveRejectsBaseURLForCodex() {
         XCTAssertThrowsError(
             try ModelConfig.resolve(

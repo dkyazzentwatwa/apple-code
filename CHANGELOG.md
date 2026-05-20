@@ -5,7 +5,7 @@ All notable changes to apple-code are documented in this file.
 ## [Unreleased]
 
 ### Added
-- **Codex CLI provider** — `--provider codex` now delegates prompts to `codex exec`, supports optional `--model` / `CODEX_MODEL`, and maps apple-code security profiles to Codex sandbox modes.
+- **Codex CLI provider** — `--provider codex` now delegates prompts to `codex exec`, defaults to `gpt-5.4`, supports `--model` / `CODEX_MODEL` overrides, and maps apple-code security profiles to Codex sandbox modes.
 - **REPL Codex shortcut** — `/codex` switches the active provider to Codex, while `/codex <prompt>` runs a one-off Codex turn inside the current session.
 
 ### Changed
