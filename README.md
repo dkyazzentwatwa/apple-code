@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  Local-first coding shell for Apple Foundation Models, Ollama, and Codex CLI.
+  Local-first coding shell for Apple Foundation Models, Private Cloud Compute, Ollama, and Codex CLI.
 </p>
 
 <p align="center">
@@ -20,11 +20,11 @@
   <img src="assets/apple-code2.png" alt="apple-code screenshot 2" width="48%" />
 </p>
 
-`apple-code` is a Swift CLI assistant for local coding workflows on macOS. It runs on-device with Apple Foundation Models by default, can switch to local Ollama models, and can delegate heavier coding turns to the authenticated Codex CLI.
+`apple-code` is a Swift CLI assistant for local coding workflows on macOS. It runs on-device with Apple Foundation Models by default, can switch to local Ollama models, can stage Apple Private Cloud Compute for larger WWDC26-era reasoning turns, and can delegate heavier coding turns to the authenticated Codex CLI.
 
 ## Highlights
 
-- Provider choices: `apple`, `ollama`, and `codex`
+- Provider choices: `apple`, `apple-pcc`, `ollama`, `codex`, plus experimental `coreai` and `mlx`
 - Fast settings menu in REPL: `/settings` or `Ctrl+P`, including provider switching
 - Dynamic local Ollama model picker using `ollama list`
 - Codex CLI handoff with `/codex` or `--provider codex`
@@ -89,6 +89,14 @@ apple-code --cwd ~/projects/myapp
 apple-code --provider apple
 ```
 
+### Apple Private Cloud Compute (WWDC26 lane)
+
+```bash
+apple-code --provider apple-pcc --reasoning moderate
+```
+
+`apple-pcc` is wired into config, status, context budgeting, and settings. Runtime execution requires an Apple Foundation Models SDK that exposes `PrivateCloudComputeLanguageModel` and PCC access for your developer account/device. Until then, `/model` reports fallback guidance instead of failing mysteriously.
+
 ### Ollama (local)
 
 ```bash
@@ -116,6 +124,15 @@ apple-code --provider codex "review this repo"
 apple-code --provider codex --model gpt-5.4 "make a plan for this bug"
 ```
 
+### Experimental Core AI and MLX
+
+```bash
+apple-code --provider coreai --model /path/to/model.aimodel
+apple-code --provider mlx --model mlx-community/Qwen3-4B-4bit
+```
+
+These are opt-in placeholders for macOS 27+/Xcode 27+ local-model work. Use Ollama for practical larger local models today.
+
 In REPL:
 
 ```text
@@ -133,9 +150,11 @@ apple-code [options] ["prompt"]
 
 --system "..."          Custom system instructions
 --cwd /path/to/dir      Working directory for file/command tools
---provider <name>       Model provider: apple | ollama | codex
---model <id>            Model ID (ollama/codex)
+--provider <name>       Model provider: apple | apple-pcc | ollama | codex | coreai | mlx
+--model <id>            Model ID (ollama/codex/coreai/mlx)
 --base-url <url>        Base URL for ollama (default: http://127.0.0.1:11434)
+--reasoning <level>     PCC reasoning level: light | moderate | deep
+--image /path           Attach image input (repeatable; requires vision-capable Apple model)
 --ui <mode>             UI mode: classic | framed
 --timeout N             Max seconds (default: 120)
 --no-apple-tools        Disable Apple app tools (Notes, Mail, etc.)
@@ -176,7 +195,7 @@ Core:
 
 Settings and model control:
 
-- `/settings` - provider picker for Apple Foundation Models, Ollama, and Codex CLI
+- `/settings` - provider picker for Apple Foundation Models, PCC, Ollama, Codex CLI, Core AI, and MLX
 - `/codex [prompt]`
 - `/model`, `/m`
 - `/ui [classic|framed]`
@@ -218,6 +237,8 @@ Hotkeys:
 Security and privacy settings can also live in `~/.apple-code/config` or project `.apple-code`:
 
 ```text
+provider = apple-pcc
+reasoning_level = moderate
 security_profile = secure
 allow_paths = /tmp,/Users/me/project
 allow_hosts = developer.apple.com

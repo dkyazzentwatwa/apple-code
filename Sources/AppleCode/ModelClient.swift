@@ -70,6 +70,14 @@ func makeModelClient(
         }
         return AppleModelClient(config: config)
 
+    case .applePCC:
+        return UnavailableModelClient(
+            config: config,
+            statusTitle: "Apple Private Cloud Compute",
+            reason: "PrivateCloudComputeLanguageModel is not present in the active FoundationModels SDK. Install/select the Xcode 27+ toolchain with PCC access, then re-run with --provider apple-pcc.",
+            fallback: "Use --provider apple for offline on-device Apple Foundation Models, --provider ollama for larger local models, or --provider codex for heavyweight coding turns."
+        )
+
     case .ollama:
         guard let model = config.model?.trimmingCharacters(in: .whitespacesAndNewlines), !model.isEmpty else {
             throw ModelClientFactoryError.missingModel
@@ -87,6 +95,22 @@ func makeModelClient(
         let trimmedModel = config.model?.trimmingCharacters(in: .whitespacesAndNewlines)
         let model = (trimmedModel?.isEmpty == false ? trimmedModel : nil) ?? ModelConfig.defaultCodexModel
         return CodexModelClient(config: config, model: model)
+
+    case .coreAI:
+        return UnavailableModelClient(
+            config: config,
+            statusTitle: "Core AI",
+            reason: "Core AI local model execution is an experimental lane that requires macOS 27+, Xcode 27+, and apple/coreai-models Swift utilities. No Core AI runtime package is linked yet.",
+            fallback: "Use --provider ollama for practical larger local models today."
+        )
+
+    case .mlx:
+        return UnavailableModelClient(
+            config: config,
+            statusTitle: "MLX",
+            reason: "MLX local model execution is an experimental lane. The mlx-swift-lm package is not linked yet.",
+            fallback: "Use --provider ollama for local Hugging Face-style models until the MLX provider is wired."
+        )
     }
 }
 
@@ -165,14 +189,66 @@ private struct AppleModelClient: ModelClient {
 
     func statusLines() -> [String] {
         let model = SystemLanguageModel.default
+        let capabilities = ModelCapabilities.resolved(for: config)
         var lines = [
             "Provider: apple",
             "Model availability: \(model.availability)",
+            "Context size: \(capabilities.contextSize)",
+            "Supports reasoning: no",
+            "Supports vision: \(capabilities.supportsVision ? "yes" : "no")",
         ]
-        if model.availability == .available, #available(macOS 26.2, *) {
+        if model.availability == .available {
             lines.append("Supports streaming: yes")
         }
         return lines
+    }
+}
+
+private struct UnavailableModelClient: ModelClient {
+    let config: ModelConfig
+    let statusTitle: String
+    let reason: String
+    let fallback: String
+
+    func respond(
+        prompt: String,
+        tools: [any Tool],
+        instructions: String
+    ) async throws -> String {
+        throw UnavailableModelClientError.unavailable(reason)
+    }
+
+    func statusLines() -> [String] {
+        let capabilities = ModelCapabilities.resolved(for: config)
+        var lines = [
+            "Provider: \(config.provider.displayName)",
+            "Model family: \(statusTitle)",
+            "Availability: \(capabilities.availabilitySummary)",
+            "Context size: \(capabilities.contextSize)",
+            "Supports streaming: \(capabilities.supportsStreaming ? "yes" : "no")",
+            "Supports reasoning: \(capabilities.supportsReasoning ? "yes" : "no")",
+            "Supports vision: \(capabilities.supportsVision ? "yes" : "no")",
+        ]
+        if let reasoning = config.reasoningLevel {
+            lines.append("Reasoning level: \(reasoning.rawValue)")
+        }
+        if let quotaStatus = capabilities.quotaStatus {
+            lines.append("Quota: \(quotaStatus)")
+        }
+        lines.append("Status: \(reason)")
+        lines.append("Fallback: \(fallback)")
+        return lines
+    }
+}
+
+private enum UnavailableModelClientError: LocalizedError {
+    case unavailable(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .unavailable(let detail):
+            return detail
+        }
     }
 }
 

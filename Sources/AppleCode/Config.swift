@@ -5,6 +5,7 @@ struct AppConfig {
     var provider: String?
     var model: String?
     var baseURL: String?
+    var reasoningLevel: String?
     var theme: String?
     var uiMode: String?
     var systemPrompt: String?
@@ -47,6 +48,7 @@ struct AppConfig {
         if let v = other.provider    { provider    = v }
         if let v = other.model       { model       = v }
         if let v = other.baseURL     { baseURL     = v }
+        if let v = other.reasoningLevel { reasoningLevel = v }
         if let v = other.theme       { theme       = v }
         if let v = other.uiMode      { uiMode      = v }
         if let v = other.systemPrompt { systemPrompt = v }
@@ -80,6 +82,7 @@ struct AppConfig {
             case "provider":         config.provider     = value
             case "model":            config.model        = value
             case "base_url", "baseurl": config.baseURL   = value
+            case "reasoning", "reasoning_level": config.reasoningLevel = value
             case "theme":            config.theme        = value
             case "ui", "ui_mode":   config.uiMode       = value
             case "system_prompt":    config.systemPrompt = value

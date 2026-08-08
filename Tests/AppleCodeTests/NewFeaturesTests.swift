@@ -127,6 +127,7 @@ final class AppConfigTests: XCTestCase {
         try """
         provider = ollama
         model = qwen2.5-coder:7b
+        reasoning_level = moderate
         theme = ocean
         ui_mode = framed
         system_prompt = You are a Swift engineer.
@@ -136,6 +137,7 @@ final class AppConfigTests: XCTestCase {
         XCTAssertNotNil(config)
         XCTAssertEqual(config?.provider, "ollama")
         XCTAssertEqual(config?.model, "qwen2.5-coder:7b")
+        XCTAssertEqual(config?.reasoningLevel, "moderate")
         XCTAssertEqual(config?.theme, "ocean")
         XCTAssertEqual(config?.uiMode, "framed")
         XCTAssertEqual(config?.systemPrompt, "You are a Swift engineer.")
@@ -261,8 +263,23 @@ final class TokenBudgetManagerTests: XCTestCase {
     }
 
     func testTokenBudgetForProviders() {
-        XCTAssertEqual(TokenBudgetManager.tokenBudget(for: .apple), 4096)
+        XCTAssertGreaterThanOrEqual(TokenBudgetManager.tokenBudget(for: .apple), 4096)
+        XCTAssertEqual(TokenBudgetManager.tokenBudget(for: .applePCC), 32768)
         XCTAssertGreaterThan(TokenBudgetManager.tokenBudget(for: .ollama), 0)
+    }
+
+    func testTokenBudgetUsesModelConfigCapabilities() {
+        let config = ModelConfig(provider: .applePCC, model: nil, baseURL: nil, reasoningLevel: .deep)
+        XCTAssertEqual(TokenBudgetManager.tokenBudget(for: config), 32768)
+    }
+
+    func testModelCapabilitiesForPCC() {
+        let capabilities = ModelCapabilities.resolved(
+            for: ModelConfig(provider: .applePCC, model: nil, baseURL: nil, reasoningLevel: .moderate)
+        )
+        XCTAssertEqual(capabilities.contextSize, 32768)
+        XCTAssertTrue(capabilities.supportsReasoning)
+        XCTAssertTrue(capabilities.isExperimental)
     }
 
     func testEstimatedUsage() {

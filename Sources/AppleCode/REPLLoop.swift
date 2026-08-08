@@ -934,6 +934,33 @@ func runInteractiveREPL(
             break
         }
 
+        let attachedImages = imageAttachments(in: line)
+        if !attachedImages.isEmpty {
+            let capabilities = ModelCapabilities.resolved(for: activeModelConfig)
+            if !capabilities.supportsVision {
+                let msg = "Image input requires a vision-capable Apple Foundation Models runtime. Active provider '\(activeModelConfig.provider.displayName)' does not report vision support."
+                if useAdvancedUI, let renderer, var state = uiState, let viewport {
+                    viewport.append(role: "error", content: msg)
+                    renderAdvancedShell(renderer: renderer, state: &state, viewport: viewport, cwd: session.workingDir, mode: activeModelConfig.modeLabel)
+                    uiState = state
+                } else {
+                    printError(msg)
+                }
+                continue
+            }
+            if let missing = attachedImages.first(where: { !FileManager.default.fileExists(atPath: ($0 as NSString).expandingTildeInPath) }) {
+                let msg = "Image not found: \(missing)"
+                if useAdvancedUI, let renderer, var state = uiState, let viewport {
+                    viewport.append(role: "error", content: msg)
+                    renderAdvancedShell(renderer: renderer, state: &state, viewport: viewport, cwd: session.workingDir, mode: activeModelConfig.modeLabel)
+                    uiState = state
+                } else {
+                    printError(msg)
+                }
+                continue
+            }
+        }
+
         if useAdvancedUI, let renderer, var state = uiState, let viewport {
             viewport.append(role: "you", content: line)
             renderAdvancedShell(
@@ -1515,7 +1542,12 @@ private func wrappedIndex(_ value: Int, count: Int) -> Int {
 
 private func conversationContextMeter(session: Session) -> String {
     let approxTokens = TokenBudgetManager.estimatedUsage(messages: session.messages)
-    let budget = TokenBudgetManager.tokenBudget(for: session.modelConfig?.provider ?? .apple)
+    let budget: Int
+    if let config = session.modelConfig {
+        budget = TokenBudgetManager.tokenBudget(for: config)
+    } else {
+        budget = TokenBudgetManager.tokenBudget(for: .apple)
+    }
     let ratio = min(1.0, Double(approxTokens) / Double(budget))
     let blocks = 10
     let filled = min(blocks, Int((ratio * Double(blocks)).rounded(.awayFromZero)))
@@ -1543,6 +1575,7 @@ private func openSettingsMenu(
 ) async {
     let options = [
         "Select Provider",
+        "Select PCC Reasoning Level",
         "Select Ollama Model",
         "Pull Recommended Qwen Model",
         "Toggle UI Mode",
@@ -1576,8 +1609,11 @@ private func openSettingsMenu(
     case 0:
         let providerOptions = [
             "Apple Foundation Models",
+            "Apple Private Cloud Compute",
             "Ollama",
             "Codex CLI",
+            "Core AI (experimental)",
+            "MLX (experimental)",
         ]
         let providerIdx = readMenuSelection(composer: composer, title: "Select Provider", options: providerOptions)
         guard let providerIdx, providerOptions.indices.contains(providerIdx) else { break }
@@ -1587,6 +1623,9 @@ private func openSettingsMenu(
             activeModelConfig = .appleDefault
             session.modelConfig = activeModelConfig
         case 1:
+            activeModelConfig = ModelConfig(provider: .applePCC, model: nil, baseURL: nil, reasoningLevel: .moderate)
+            session.modelConfig = activeModelConfig
+        case 2:
             let envBase = ProcessInfo.processInfo.environment["OLLAMA_BASE_URL"]?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let baseURL = (envBase?.isEmpty == false) ? (envBase ?? "http://127.0.0.1:11434") : "http://127.0.0.1:11434"
@@ -1604,15 +1643,33 @@ private func openSettingsMenu(
                     }
                 }
             }
-        case 2:
+        case 3:
             if let codexConfig = try? ModelConfig.resolve(providerFlag: "codex", modelFlag: nil, baseURLFlag: nil) {
                 activeModelConfig = codexConfig
                 session.modelConfig = activeModelConfig
             }
+        case 4:
+            activeModelConfig = ModelConfig(provider: .coreAI, model: nil, baseURL: nil)
+            session.modelConfig = activeModelConfig
+        case 5:
+            activeModelConfig = ModelConfig(provider: .mlx, model: nil, baseURL: nil)
+            session.modelConfig = activeModelConfig
         default:
             break
         }
     case 1:
+        let levels = ReasoningLevel.allMenuOptions
+        let idx = readMenuSelection(composer: composer, title: "PCC Reasoning Level", options: levels.map(\.rawValue))
+        if let idx, levels.indices.contains(idx) {
+            activeModelConfig = ModelConfig(
+                provider: .applePCC,
+                model: nil,
+                baseURL: nil,
+                reasoningLevel: levels[idx]
+            )
+            session.modelConfig = activeModelConfig
+        }
+    case 2:
         let rawBaseURL = activeModelConfig.baseURL ?? ProcessInfo.processInfo.environment["OLLAMA_BASE_URL"] ?? "http://127.0.0.1:11434"
         guard let baseURL = URL(string: rawBaseURL) else { break }
         let status = await OllamaModelDiscovery.discoveryStatus(baseURL: baseURL)
@@ -1626,13 +1683,13 @@ private func openSettingsMenu(
             activeModelConfig = ModelConfig(provider: .ollama, model: status.installedModels[modelIdx], baseURL: rawBaseURL)
             session.modelConfig = activeModelConfig
         }
-    case 2:
+    case 3:
         let pullOptions = OllamaModelDiscovery.recommendedQwenModels
         let idx = readMenuSelection(composer: composer, title: "Pull Qwen Model", options: pullOptions)
         if let idx, pullOptions.indices.contains(idx) {
             _ = runOllamaPull(model: pullOptions[idx])
         }
-    case 3:
+    case 4:
         let nextMode: UIMode = uiMode == .framed ? .classic : .framed
         if nextMode == .framed && !supportsFramedUI {
             printError("Framed UI requires a Unicode-capable interactive terminal.")
@@ -1644,7 +1701,7 @@ private func openSettingsMenu(
         if useAdvancedUI, renderer == nil {
             renderer = TUIRenderer(theme: activeTheme, capabilities: capabilities)
         }
-    case 4:
+    case 5:
         let themes = TUITheme.all.map(\.name)
         let idx = readMenuSelection(composer: composer, title: "Select Theme", options: themes)
         if let idx, themes.indices.contains(idx), let selected = TUITheme.named(themes[idx]) {
@@ -1652,10 +1709,10 @@ private func openSettingsMenu(
             session.activeThemeName = selected.name
             renderer?.setTheme(selected)
         }
-    case 5:
+    case 6:
         guard !recentSessions.isEmpty else { break }
         selectedSessionChipIndex = wrappedIndex(selectedSessionChipIndex + 1, count: recentSessions.count)
-    case 6:
+    case 7:
         do {
             let client = try makeModelClient(config: activeModelConfig)
             print("\n" + client.statusLines().joined(separator: "\n"))
@@ -1741,10 +1798,14 @@ private func effectiveResponseTimeout(for config: ModelConfig, requestedSeconds:
     switch config.provider {
     case .apple:
         return requested
+    case .applePCC:
+        return max(300, requested)
     case .ollama:
         // Local Ollama models (especially larger ones) can legitimately take longer.
         return max(300, requested)
     case .codex:
+        return max(300, requested)
+    case .coreAI, .mlx:
         return max(300, requested)
     }
 }
@@ -1954,7 +2015,7 @@ private func helpTextForViewport() -> String {
     /history [n]     Show recent transcript entries
     /show <id>       Show full transcript entry by ID
     /model (/m)      Show model info
-    /settings        Open settings menu (provider/model/ui/theme/session)
+    /settings        Open settings menu (provider/model/reasoning/ui/theme/session)
     /codex [prompt]  Switch to Codex or run one Codex prompt
     /ui [mode]       Set UI mode (classic, framed)
     /session ...     Session quick switch (next, prev, id-prefix)
@@ -2087,6 +2148,35 @@ private func buildPromptWithMemory(userInput: String, priorMessages: [Message]) 
     Current user message:
     \(userInput)
     """
+}
+
+private func imageAttachments(in input: String) -> [String] {
+    let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+    var paths: [String] = []
+
+    if trimmed.hasPrefix("/image ") {
+        let remainder = String(trimmed.dropFirst("/image ".count))
+        if let first = remainder.split(separator: " ", maxSplits: 1).first {
+            paths.append(String(first))
+        }
+    }
+
+    let pattern = #"\[image:\s*([^\]]+)\]"#
+    guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+        return paths
+    }
+    let range = NSRange(input.startIndex..<input.endIndex, in: input)
+    for match in regex.matches(in: input, options: [], range: range) {
+        guard match.numberOfRanges > 1,
+              let pathRange = Range(match.range(at: 1), in: input) else {
+            continue
+        }
+        let path = String(input[pathRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !path.isEmpty {
+            paths.append(path)
+        }
+    }
+    return paths
 }
 
 /// Loads APPLE-CODE.md or CLAUDE.md from the working directory as project context.

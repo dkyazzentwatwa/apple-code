@@ -3,16 +3,18 @@ import FoundationModels
 
 func printUsage() {
     print("""
-    apple-code - Local AI coding assistant with Apple Foundation Models, Ollama, and Codex CLI
+    apple-code - Local AI coding assistant with Apple Foundation Models, PCC, Ollama, and Codex CLI
 
     Usage: apple-code [options] ["prompt"]
 
     Options:
       --system "..."          Custom system instructions (overrides config file)
       --cwd /path/to/dir     Working directory for file/command tools
-      --provider <name>      Model provider: apple | ollama | codex (overrides config file)
-      --model <id>           Model ID (ollama/codex, overrides config file)
+      --provider <name>      Model provider: apple | apple-pcc | ollama | codex | coreai | mlx
+      --model <id>           Model ID (ollama/codex/coreai/mlx, overrides config file)
       --base-url <url>       Base URL for ollama (default: http://127.0.0.1:11434)
+      --reasoning <level>    PCC reasoning level: light | moderate | deep
+      --image /path          Attach image input (repeatable; requires vision-capable Apple model)
       --ui <mode>            UI mode: classic | framed
       --timeout N            Max seconds (default: 120)
       --no-apple-tools       Disable Apple app tools (Notes, Mail, etc.)
@@ -41,7 +43,7 @@ func printUsage() {
     Config files (key=value, loaded automatically):
       ~/.apple-code/config   Global config
       ./.apple-code          Project config (overrides global)
-      Keys: provider, model, base_url, theme, ui_mode, system_prompt
+      Keys: provider, model, base_url, reasoning_level, theme, ui_mode, system_prompt
             security_profile, allow_paths, allow_hosts, allow_private_network
             dangerous_without_confirm, allow_fallback_execution, privacy_redaction
 
@@ -57,7 +59,7 @@ func printUsage() {
       /history [n]          Show recent transcript entries
       /show <id>            Show full transcript entry by ID
       /model, /m            Show model info
-      /settings             Open settings menu (provider/model/ui/theme/session)
+      /settings             Open settings menu (provider/model/reasoning/ui/theme/session)
       /codex [prompt]       Switch to Codex or run a one-off Codex prompt
       /compact              Summarize old turns to free context window
       /ui [mode]            Switch UI mode (classic, framed)
@@ -73,6 +75,7 @@ func printUsage() {
       # Interactive mode (REPL)
       apple-code
       apple-code --cwd ~/projects/myapp
+      apple-code --provider apple-pcc --reasoning moderate
       apple-code --provider ollama --model qwen3.5:4b
       apple-code --provider codex --model gpt-5.4
 
@@ -244,9 +247,13 @@ private func effectiveResponseTimeout(for config: ModelConfig, requestedSeconds:
     switch config.provider {
     case .apple:
         return requested
+    case .applePCC:
+        return max(300, requested)
     case .ollama:
         return max(300, requested)
     case .codex:
+        return max(300, requested)
+    case .coreAI, .mlx:
         return max(300, requested)
     }
 }
@@ -257,7 +264,9 @@ var cwd: String?
 var providerFlag: String?
 var modelFlag: String?
 var baseURLFlag: String?
+var reasoningFlag: String?
 var uiModeFlag: String?
+var imagePaths: [String] = []
 var securityOverrides = RuntimeSecurityCLIOverrides()
 var timeout: Int = 120
 var noAppleTools = false
@@ -293,6 +302,12 @@ while i < args.count {
     case "--base-url":
         i += 1
         if i < args.count { baseURLFlag = args[i] }
+    case "--reasoning":
+        i += 1
+        if i < args.count { reasoningFlag = args[i] }
+    case "--image":
+        i += 1
+        if i < args.count { imagePaths.append(args[i]) }
     case "--ui":
         i += 1
         if i < args.count { uiModeFlag = args[i] }
@@ -381,6 +396,7 @@ AppConfig.ensureConfigDir()
 if providerFlag == nil    { providerFlag    = fileConfig.provider }
 if modelFlag == nil       { modelFlag       = fileConfig.model }
 if baseURLFlag == nil     { baseURLFlag     = fileConfig.baseURL }
+if reasoningFlag == nil   { reasoningFlag   = fileConfig.reasoningLevel }
 if uiModeFlag == nil      { uiModeFlag      = fileConfig.uiMode }
 if systemInstructions == nil { systemInstructions = fileConfig.systemPrompt }
 
@@ -400,7 +416,8 @@ do {
     runtimeModelConfig = try ModelConfig.resolve(
         providerFlag: providerFlag,
         modelFlag: modelFlag,
-        baseURLFlag: baseURLFlag
+        baseURLFlag: baseURLFlag,
+        reasoningFlag: reasoningFlag
     )
 } catch {
     FileHandle.standardError.write(Data("Error: \(error.localizedDescription)\n".utf8))
@@ -506,6 +523,21 @@ if shouldBeInteractive {
 guard let prompt = promptArg, !prompt.isEmpty else {
     FileHandle.standardError.write(Data("Error: No prompt provided. Use --interactive for REPL mode.\n".utf8))
     exit(1)
+}
+
+if !imagePaths.isEmpty {
+    let capabilities = ModelCapabilities.resolved(for: runtimeModelConfig)
+    guard capabilities.supportsVision else {
+        FileHandle.standardError.write(Data("Error: --image requires a vision-capable Apple Foundation Models runtime. The active provider '\(runtimeModelConfig.provider.displayName)' does not report vision support.\n".utf8))
+        exit(1)
+    }
+    for imagePath in imagePaths {
+        let expanded = (imagePath as NSString).expandingTildeInPath
+        guard FileManager.default.fileExists(atPath: expanded) else {
+            FileHandle.standardError.write(Data("Error: Image not found: \(imagePath)\n".utf8))
+            exit(1)
+        }
+    }
 }
 
 let tools = routeTools(

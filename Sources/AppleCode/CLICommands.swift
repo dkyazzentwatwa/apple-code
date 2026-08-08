@@ -99,7 +99,7 @@ func printHelp() {
     \(TUI.promptColor)/history [n]\(TUI.reset)      Show recent transcript entries
     \(TUI.promptColor)/show <id>\(TUI.reset)        Show full entry by transcript ID
     \(TUI.promptColor)/model\(TUI.reset) (or /m)     Show current model info
-    \(TUI.promptColor)/settings\(TUI.reset)          Open settings menu (provider/model/ui/theme/session)
+    \(TUI.promptColor)/settings\(TUI.reset)          Open settings menu (provider/model/reasoning/ui/theme/session)
     \(TUI.promptColor)/codex [prompt]\(TUI.reset)    Switch to Codex or run a one-off Codex prompt
     \(TUI.promptColor)/ui [classic|framed]\(TUI.reset)  Switch REPL renderer mode
     \(TUI.promptColor)/session <id|next|prev>\(TUI.reset) Quick switch session
@@ -114,7 +114,7 @@ func printHelp() {
 
     \(TUI.mutedColor)Keys: Enter submit, Ctrl+J newline, arrows navigate history/edit.\(TUI.reset)
     \(TUI.mutedColor)Keys: Ctrl+P settings • Esc(Ctrl+[) prev session • Ctrl+] next session.\(TUI.reset)
-    \(TUI.mutedColor)Provider: apple (AFM), ollama (local), or codex (CLI) via /settings.\(TUI.reset)
+    \(TUI.mutedColor)Provider: apple, apple-pcc, ollama, codex, coreai, or mlx via /settings.\(TUI.reset)
     \(TUI.mutedColor)Tip: Just type a message to chat. The AI will use tools when needed.\(TUI.reset)
     """)
 }

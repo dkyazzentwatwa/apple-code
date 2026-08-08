@@ -3,13 +3,20 @@ import Foundation
 /// Manages conversation context budgets and rolling-window pruning.
 struct TokenBudgetManager {
     /// Approximate per-provider token limits.
-    /// AFM uses ~4096; local/CLI providers can carry larger prompts.
+    /// Prefer tokenBudget(for:) with ModelConfig when model capabilities are available.
     static func tokenBudget(for provider: ProviderKind) -> Int {
         switch provider {
-        case .apple:  return 4096
-        case .ollama: return 8192
-        case .codex:  return 32_000
+        case .apple:    return ModelCapabilities.resolved(for: .appleDefault).contextSize
+        case .applePCC: return 32_768
+        case .ollama:   return 8_192
+        case .codex:    return 32_000
+        case .coreAI:   return 8_192
+        case .mlx:      return 8_192
         }
+    }
+
+    static func tokenBudget(for config: ModelConfig) -> Int {
+        ModelCapabilities.resolved(for: config).contextSize
     }
 
     /// Estimate tokens for a string (rough 4-chars-per-token heuristic).

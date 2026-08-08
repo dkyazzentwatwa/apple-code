@@ -83,6 +83,77 @@ final class ModelConfigTests: XCTestCase {
         XCTAssertNil(config.baseURL)
     }
 
+    func testResolveApplePCCAliasesAndReasoning() throws {
+        let config = try ModelConfig.resolve(
+            providerFlag: "private-cloud-compute",
+            modelFlag: nil,
+            baseURLFlag: nil,
+            reasoningFlag: "deep",
+            env: [:]
+        )
+
+        XCTAssertEqual(config.provider, .applePCC)
+        XCTAssertEqual(config.reasoningLevel, .deep)
+        XCTAssertNil(config.model)
+        XCTAssertNil(config.baseURL)
+    }
+
+    func testResolveRejectsReasoningForNonPCCProviders() {
+        XCTAssertThrowsError(
+            try ModelConfig.resolve(
+                providerFlag: "apple",
+                modelFlag: nil,
+                baseURLFlag: nil,
+                reasoningFlag: "light",
+                env: [:]
+            )
+        ) { error in
+            guard case ModelConfigError.reasoningUnsupported(let provider) = error else {
+                XCTFail("Expected reasoningUnsupported, got: \(error)")
+                return
+            }
+            XCTAssertEqual(provider, "apple")
+        }
+    }
+
+    func testResolveRejectsInvalidReasoningLevel() {
+        XCTAssertThrowsError(
+            try ModelConfig.resolve(
+                providerFlag: "apple-pcc",
+                modelFlag: nil,
+                baseURLFlag: nil,
+                reasoningFlag: "maximum",
+                env: [:]
+            )
+        ) { error in
+            guard case ModelConfigError.invalidReasoningLevel(let value) = error else {
+                XCTFail("Expected invalidReasoningLevel, got: \(error)")
+                return
+            }
+            XCTAssertEqual(value, "maximum")
+        }
+    }
+
+    func testResolveExperimentalLocalProviders() throws {
+        let coreAI = try ModelConfig.resolve(
+            providerFlag: "core-ai",
+            modelFlag: "qwen3-4b.aimodel",
+            baseURLFlag: nil,
+            env: [:]
+        )
+        XCTAssertEqual(coreAI.provider, .coreAI)
+        XCTAssertEqual(coreAI.model, "qwen3-4b.aimodel")
+
+        let mlx = try ModelConfig.resolve(
+            providerFlag: "mlx-swift-lm",
+            modelFlag: "mlx-community/Qwen3-4B-4bit",
+            baseURLFlag: nil,
+            env: [:]
+        )
+        XCTAssertEqual(mlx.provider, .mlx)
+        XCTAssertEqual(mlx.model, "mlx-community/Qwen3-4B-4bit")
+    }
+
     func testResolveRejectsBaseURLForCodex() {
         XCTAssertThrowsError(
             try ModelConfig.resolve(
