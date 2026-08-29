@@ -20,6 +20,7 @@ func printUsage() {
       --no-apple-tools       Disable Apple app tools (Notes, Mail, etc.)
       --check-apple-tools    Run Apple app diagnostics and exit
       --no-web-tools         Disable dedicated web search/fetch tools
+                             URL text alone does not enable page retrieval
       --no-browser-tools     Disable browser automation tools
       --run-web-fetch <url>  Run webFetch tool directly and exit
       --run-web-search "q"   Run webSearch tool directly and exit
@@ -203,10 +204,6 @@ func routeTools(
         p.contains("export") || p.contains("save as") || p.contains("write")
     )
 
-    let hasURLInPrompt = p.contains("http://")
-        || p.contains("https://")
-        || p.contains("littlehakr.substack.com")
-
     let wantsWebSearch = includeWebTools && (!hasNotesIntent || hasExplicitWebIntent) && (
         p.contains("search web") || p.contains("search online") || p.contains("web search") ||
         p.contains("latest") || p.contains("news about") || p.contains("look up online") ||
@@ -215,7 +212,7 @@ func routeTools(
 
     let wantsWebFetch = includeWebTools && (
         p.contains("fetch url") || p.contains("open this url") || p.contains("summarize this page") ||
-        p.contains("extract from") || hasURLInPrompt
+        p.contains("extract from")
     )
 
     if wantsProjectSummary { selected.append(ReadFileTool()); selected.append(ListDirectoryTool()); selected.append(SearchFilesTool()); selected.append(SearchContentTool()) }
